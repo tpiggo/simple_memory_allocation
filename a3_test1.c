@@ -20,14 +20,13 @@ int main(int argc, char *argv[])
 		sprintf(str, "c[%d]: %p", i, c[i]);
 		puts(str);
 	}
-	/*
-    for (i = 0; i < 32; i++)
+	
+    for (i = 0; i < 5; i++)
 	{
 		sma_free(c[i]);
 		// sprintf(str, "c[i]: %p", c[i]);
 		// puts(str);
 	}
-	*/
 	sma_mallinfo();
     return 0;
 }

@@ -43,6 +43,7 @@ typedef enum //	Policy type definition
 	NEXT
 } Policy;
 
+char ps[50];
 char *sma_malloc_error;
 void *freeListHead = NULL;			  //	The pointer to the HEAD of the doubly linked free memory list
 void *freeListTail = NULL;			  //	The pointer to the TAIL of the doubly linked free memory list
@@ -100,6 +101,7 @@ void *sma_malloc(int size)
 
 	// Updates SMA Info
 	totalAllocatedSize += size;
+	freeListInfo();
 
 	return pMemory;
 }
@@ -217,7 +219,7 @@ void *allocate_pBrk(int size)
 	*/
 	// Size if 128 bytes plus extra space for the head and tail headers
 	excessSize = newBlockSize;
-	int totalSize = excessSize + 2 * sizeof(BLOCK_HEADER);
+	int totalSize = excessSize + sizeof(free_block_head_t) + BLOCK_HEADER;
 	
 	newBlock = sbrk(totalSize);
 	if (newBlock == NULL)
@@ -230,14 +232,14 @@ void *allocate_pBrk(int size)
 	((free_block_head_t *)newBlock)->prev = NULL;
 	((free_block_head_t *)newBlock)->size = excessSize;
 	// move the pointer to the end and set tail tag
-	int *tailTag = newBlock + excessSize - sizeof(BLOCK_HEADER);
+	int *tailTag = newBlock + excessSize - BLOCK_HEADER;
 	*tailTag = newBlockSize;
-	excessSize = excessSize - size - 2 * sizeof(BLOCK_HEADER);
+	excessSize = excessSize - size - 2 * BLOCK_HEADER;
 	//	Allocates the Memory Block by sending the whole newBlock to get allocated accordingly.
 	allocate_block(newBlock, size, excessSize, 0);
-	
+	sprintf(ps, "totalSize: %d", totalSize);
+	puts(ps);
 	//return newBlock + BLOCK_HEADER;
-	puts("Getting 64kb");
 	return newBlock;
 }
 
@@ -284,10 +286,11 @@ void *allocate_worst_fit(int size)
 	//	TODO: 	Allocate memory by using Worst Fit Policy
 	//	Hint:	Start off with the freeListHead and iterate through the entire list to get the largest block
 
+
 	// Not proper worst_fit
 	worstBlock = freeListHead;
 	blockFound = 1;
-	excessSize = ((free_block_head_t *)worstBlock)->size - size;
+	excessSize = ((free_block_head_t *)worstBlock)->size - size - 2 * BLOCK_HEADER;
 	//	Checks if appropriate block is found.
 	if (blockFound)
 	{
@@ -354,7 +357,7 @@ void allocate_block(void *newBlock, int size, int excessSize, int fromFreeList)
 	 * Bottom header does not contain the pointers, thus min size of a free block must be larger than
 	 * free header block and tail block.
 	**/
-	addFreeBlock = excessSize > FREE_BLOCK_HEADER_SIZE + BLOCK_HEADER;
+	addFreeBlock = excessSize > sizeof(free_block_head_t) + BLOCK_HEADER;
 
 	//	If excess free size is big enough
 	if (addFreeBlock)
@@ -363,31 +366,28 @@ void allocate_block(void *newBlock, int size, int excessSize, int fromFreeList)
 		// Here we need to allocate, and potentially split, the free block
 		// Set the tail
 		int *tailTag = newBlock + size + BLOCK_HEADER;
-		*tailTag = size | 1;
+		*tailTag = size + 1;
 
-		excessFreeBlock = newBlock + size + 2 * sizeof(BLOCK_HEADER);
+		excessFreeBlock = newBlock + size + 2 * BLOCK_HEADER;
 		((free_block_head_t *)excessFreeBlock)->size =  excessSize;
 
 		// Set the split blocks tails
 		tailTag = excessFreeBlock + excessSize + BLOCK_HEADER;
 		*tailTag = excessSize;
 
-		// set the front header
-		((free_block_head_t *)newBlock)->size = size;
-
 		//	Checks if the new block was allocated from the free memory list
 		if (fromFreeList)
 		{
 			//	Removes new block and adds the excess free block to the free list
-			puts("here0");
 			replace_block_freeList(newBlock, excessFreeBlock);
 		}
 		else
 		{
 			//	Adds excess free block to the free list
-			puts("here1");
 			add_block_freeList(excessFreeBlock);
 		}
+		// set the front header
+		((free_block_head_t *)newBlock)->size = size + 1;
 	}
 	//	Otherwise add the excess memory to the new block
 	else
@@ -420,8 +420,17 @@ void replace_block_freeList(void *oldBlock, void *newBlock)
 	((free_block_head_t *)oldBlock)->prev = NULL;
 	((free_block_head_t *)oldBlock)->next = NULL;
 
+	if (oldBlock == freeListHead)
+	{
+		// Swap head of the list if it is the head of the list
+		freeListHead = newBlock;
+	}
 
-
+	if (oldBlock == freeListTail)
+	{
+		// Swap tail of the list if it is the tail of the list
+		freeListTail = newBlock;
+	}
 
 	//	Updates SMA info
 	totalAllocatedSize += (get_blockSize(oldBlock) - get_blockSize(newBlock));
@@ -444,10 +453,19 @@ void add_block_freeList(void *block)
 	//			Merging would be tideous. Check adjacent blocks, then also check if the merged
 	//			block is at the top and is bigger than the largest free block allowed (128kB).
 
+	// Coming from free, the block was in use, therefore, we need to reset the length
+	if ((*(int *)block | 0) != 0)
+	{
+		*(int *)block = *(int *)block - 1;
+		void *ptr = block + BLOCK_HEADER + *(int *)block;
+		*(int *)ptr = *(int *)ptr - 1;
+	}
+
 	// Edge cases: No list
 	if (freeListHead == NULL)
 	{
 		freeListHead = block;
+		freeListTail = block;
 	}
 	// It is not the only thing in memory, add it to the end, but check if the last element is beside you
 	// If it is, merge.
@@ -455,26 +473,20 @@ void add_block_freeList(void *block)
 	{	
 		void *currentBlock = block;
 		void *blockBefore = block - BLOCK_HEADER;
-		void *blockAfter = block + 2 * BLOCK_HEADER + ((free_block_head_t *)block)->size;
-		char str[50];
-		sprintf(str, "%p", currentBlock);
-		puts(str);
-		sprintf(str, "%p", blockBefore);
-		puts(str);
-		if (*(int *)blockBefore == 0 && *(int *)blockAfter == 0)
+		void *blockAfter = block + 2 * BLOCK_HEADER + *(int *)block;
+		if (*(int *)blockBefore % 2 == 0 && *(int *)blockAfter % 2  == 0)
 		{
-			// merge both sides
-			
+			puts("double coalescence");
 		}
-		else if (*(int *)blockBefore == 0 || *(int *)blockAfter == 0)
+		else if (*(int *)blockBefore % 2 == 0 || *(int *)blockAfter % 2 == 0)
 		{
-			if (*(int *)blockBefore == 0)
+			if (*(int *)blockBefore % 2 == 0 && *(int *)blockBefore != 0)
 			{
-				//merge 
+				puts("front coalescence");
 			}
 			else
 			{
-				// merge
+				puts("rear coalescence");
 			}
 
 		}
@@ -540,6 +552,36 @@ int get_largest_freeBlock()
 	int largestBlockSize = 0;
 
 	//	TODO: Iterate through the Free Block List to find the largest free block and return its size
+	void *ptr = freeListHead;
+	while (ptr != NULL)
+	{
+		int ptrSize = ((free_block_head_t *)ptr)->size;
+		if (largestBlockSize < ptrSize)
+		{
+			largestBlockSize = ptrSize;
+		}
+		ptr = ((free_block_head_t *)ptr)->next;;
+	}
 
 	return largestBlockSize;
+}
+
+void freeListInfo()
+{
+	void *ptr = freeListHead;
+	while (ptr != NULL)
+	{
+		char str[50];
+		int ptr_size = ((free_block_head_t *)ptr)->size;
+		sprintf(str, "Size of free: %d", ptr_size);
+		puts(str);
+		void *ptr_n = ((free_block_head_t *)ptr)->next;
+		sprintf(str, "next add: %p", ptr_n);
+		puts(str);
+		void *ptr_p = ((free_block_head_t *)ptr)->prev;
+		sprintf(str, "prev addr: %p", ptr_p);
+		puts(str);
+		ptr = ptr_n;
+	}
+	
 }
