@@ -98,10 +98,8 @@ void *sma_malloc(int size)
 		sma_malloc_error = "Error: Memory allocation failed!";
 		return NULL;
 	}
-
 	// Updates SMA Info
 	totalAllocatedSize += size;
-	freeListInfo();
 
 	return pMemory;
 }
@@ -237,8 +235,6 @@ void *allocate_pBrk(int size)
 	excessSize = excessSize - size - 2 * BLOCK_HEADER;
 	//	Allocates the Memory Block by sending the whole newBlock to get allocated accordingly.
 	allocate_block(newBlock, size, excessSize, 0);
-	sprintf(ps, "totalSize: %d", totalSize);
-	puts(ps);
 	//return newBlock + BLOCK_HEADER;
 	return newBlock;
 }
@@ -431,7 +427,8 @@ void replace_block_freeList(void *oldBlock, void *newBlock)
 		// Swap tail of the list if it is the tail of the list
 		freeListTail = newBlock;
 	}
-
+	sprintf(ps, "alloced = %ld", totalAllocatedSize);
+	puts(ps);
 	//	Updates SMA info
 	totalAllocatedSize += (get_blockSize(oldBlock) - get_blockSize(newBlock));
 	totalFreeSize += (get_blockSize(newBlock) - get_blockSize(oldBlock));
@@ -452,15 +449,16 @@ void add_block_freeList(void *block)
 	//			Also, you would need to check if merging with the "adjacent" blocks is possible or not.
 	//			Merging would be tideous. Check adjacent blocks, then also check if the merged
 	//			block is at the top and is bigger than the largest free block allowed (128kB).
-
-	// Coming from free, the block was in use, therefore, we need to reset the length
-	if ((*(int *)block | 0) != 0)
+	int flag = 0;
+	// Coming from free, the block was in use, therefore, we need to reset the length and reset flag
+	if ((*(int *)block % 2) != 0)
 	{
 		*(int *)block = *(int *)block - 1;
 		void *ptr = block + BLOCK_HEADER + *(int *)block;
 		*(int *)ptr = *(int *)ptr - 1;
+		flag = 1;
 	}
-
+	int blockSize = *(int *)block;
 	// Edge cases: No list
 	if (freeListHead == NULL)
 	{
@@ -472,26 +470,46 @@ void add_block_freeList(void *block)
 	else
 	{	
 		void *currentBlock = block;
-		void *blockBefore = block - BLOCK_HEADER;
-		void *blockAfter = block + 2 * BLOCK_HEADER + *(int *)block;
-		if (*(int *)blockBefore % 2 == 0 && *(int *)blockAfter % 2  == 0)
+		int blockBefore = *(int *)(block - BLOCK_HEADER);
+		int blockAfter = *(int *)(block + 2 * BLOCK_HEADER + *(int *)block);
+		if (blockBefore != 0 && blockAfter != 0)
 		{
-			puts("double coalescence");
-		}
-		else if (*(int *)blockBefore % 2 == 0 || *(int *)blockAfter % 2 == 0)
-		{
-			if (*(int *)blockBefore % 2 == 0 && *(int *)blockBefore != 0)
+			if (blockBefore % 2 == 0 && blockAfter % 2 == 0)
 			{
-				puts("front coalescence");
+				block = frontCoalescence(block, blockBefore);
+				block = rearCoalescence(block, blockAfter);
+			}
+			else if (blockBefore % 2 == 0)
+			{
+				puts("Front Coalescence 1");
+				block = frontCoalescence(block, blockBefore);
+			} 
+			else if (blockAfter % 2 == 0)
+			{
+				puts("Rear Coalescence 1");
+				block = rearCoalescence(block, blockAfter);
 			}
 			else
 			{
-				puts("rear coalescence");
+				puts("none 1");
+				((free_block_head_t *)block)->next = NULL; 
+				((free_block_head_t *)freeListTail)->next = block;
+				((free_block_head_t *)block)->prev = freeListTail;
+				freeListTail = block;
 			}
-
+		}
+		else if(blockBefore % 2 == 0 && blockBefore != 0)
+		{
+			puts("Merge With Block In front 2");
+			frontCoalescence(block, blockBefore);
+		}
+		else if (blockAfter != 0 && blockAfter % 2 == 0)
+		{
+			puts("Rear Coalescence 2");
 		}
 		else
-		{	
+		{
+			
 			((free_block_head_t *)block)->next = NULL; 
 			((free_block_head_t *)freeListTail)->next = block;
 			((free_block_head_t *)block)->prev = freeListTail;
@@ -501,9 +519,11 @@ void add_block_freeList(void *block)
 	}
 
 	//	Updates SMA info
-	totalAllocatedSize -= get_blockSize(block);
-	totalFreeSize += get_blockSize(block);
-	
+	if (flag == 1)
+	{
+		totalAllocatedSize -= blockSize;
+	}
+	totalFreeSize += blockSize;
 }
 
 /*
@@ -569,9 +589,13 @@ int get_largest_freeBlock()
 void freeListInfo()
 {
 	void *ptr = freeListHead;
-	while (ptr != NULL)
+	int i = 0;
+	while (ptr != NULL && i < 5)
 	{
 		char str[50];
+		puts("--------");
+		sprintf(str, "currentaddr: %p", ptr);
+		puts(str);
 		int ptr_size = ((free_block_head_t *)ptr)->size;
 		sprintf(str, "Size of free: %d", ptr_size);
 		puts(str);
@@ -581,7 +605,56 @@ void freeListInfo()
 		void *ptr_p = ((free_block_head_t *)ptr)->prev;
 		sprintf(str, "prev addr: %p", ptr_p);
 		puts(str);
+		puts("--------");
 		ptr = ptr_n;
+		i++;
 	}
 	
+}
+
+void *frontCoalescence(void *block, int lengthBefore)
+{
+	//int blockSize = *(int *)block;
+	void *blockInfront = block - 2 * BLOCK_HEADER - lengthBefore;
+	((free_block_head_t *)blockInfront)->size += 2 * BLOCK_HEADER + ((free_block_head_t *)block)->size;
+	int *blockTail = block + BLOCK_HEADER + *(int *)block;
+	*blockTail =  ((free_block_head_t *)blockInfront)->size;
+	return blockInfront;
+}
+
+void *rearCoalescence(void *block, int lengthBehind)
+{
+	//int blockSize = *(int *)block;
+	void *blockBehind = block + 2 * BLOCK_HEADER + *(int *)block;
+	((free_block_head_t *)block)->size += 2 * BLOCK_HEADER + ((free_block_head_t *)blockBehind)->size;
+	int *blockTail = block + BLOCK_HEADER + ((free_block_head_t *)block)->size;
+	*blockTail =  ((free_block_head_t *)block)->size;
+	if (block == ((free_block_head_t *)blockBehind)->next)
+	{
+		((free_block_head_t *)block)->prev = ((free_block_head_t *)blockBehind)-> prev;
+	}
+	else if (block == ((free_block_head_t *)blockBehind)->prev)
+	{
+		((free_block_head_t *)block)->next = ((free_block_head_t *)blockBehind)-> next;
+	}
+	else
+	{
+		((free_block_head_t *)block)->prev = ((free_block_head_t *)blockBehind)->prev;
+		((free_block_head_t *)block)->next = ((free_block_head_t *)blockBehind)->next;
+	}
+
+	if (blockBehind == freeListHead)
+	{
+		freeListHead = block;
+	}
+	if (blockBehind == freeListTail)
+	{
+		freeListTail= block;
+	}
+
+	// Set the values to NULL
+	((free_block_head_t *)blockBehind)->next = NULL;
+	((free_block_head_t *)blockBehind)->prev = NULL;
+	((free_block_head_t *)blockBehind)->size = 0;
+	return block;
 }

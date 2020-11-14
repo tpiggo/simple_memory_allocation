@@ -27,6 +27,9 @@ int main(int argc, char *argv[])
 		// sprintf(str, "c[i]: %p", c[i]);
 		// puts(str);
 	}
+	sprintf(str, "c[4] = %p", c[4] );
+	puts(str);
 	sma_mallinfo();
+	freeListInfo();
     return 0;
 }
