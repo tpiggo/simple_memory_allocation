@@ -51,6 +51,7 @@ unsigned long totalAllocatedSize = 0; //	Total Allocated memory in Bytes
 unsigned long totalFreeSize = 0;	  //	Total Free memory in Bytes in the free memory list
 Policy currentPolicy = WORST;		  //	Current Policy
 //	TODO: Add any global variables here
+int minFreeSize = sizeof(free_block_head_t) + BLOCK_HEADER;
 
 /*
  * =====================================================================================
@@ -73,7 +74,6 @@ void *sma_malloc(int size)
 	if (freeListHead == NULL)
 	{
 		// Allocate memory by increasing the Program Break
-		// 128 kb
 		pMemory = allocate_pBrk(size);
 	}
 	// If free list is not empty
@@ -203,7 +203,7 @@ void *allocate_pBrk(int size)
 {
 	void *newBlock = NULL;
 	int excessSize;
-	int newBlockSize = 64*1024;
+	int newBlockSize = size;
 
 	/***
 	 * TODO: 	Allocate memory by incrementing the Program Break by calling sbrk() or brk()
@@ -215,10 +215,8 @@ void *allocate_pBrk(int size)
 	 * therefore, 64 - alloc + free space < 64kb.
 	 * 
 	*/
-	// Size if 128 bytes plus extra space for the head and tail headers
 	excessSize = newBlockSize;
-	int totalSize = excessSize + sizeof(free_block_head_t) + BLOCK_HEADER;
-	
+	int totalSize = excessSize + 2 * BLOCK_HEADER;
 	newBlock = sbrk(totalSize);
 	if (newBlock == NULL)
 	{
@@ -278,19 +276,31 @@ void *allocate_worst_fit(int size)
 	void *worstBlock = NULL;
 	int excessSize;
 	int blockFound = 0;
-
+	int minSize = sizeof(free_block_head_t) + BLOCK_HEADER;
 	//	TODO: 	Allocate memory by using Worst Fit Policy
-	//	Hint:	Start off with the freeListHead and iterate through the entire list to get the largest block
+	//	Hint:	Start off with the freeListHead and iterate through the entire list to get the largest bloc
 
-
-	// Not proper worst_fit
-	worstBlock = freeListHead;
-	blockFound = 1;
-	excessSize = ((free_block_head_t *)worstBlock)->size - size - 2 * BLOCK_HEADER;
+	void *ptr = freeListHead;
+	excessSize = 0;
+	
+	while (ptr != NULL)
+	{
+		int ptrSize = ((free_block_head_t *)ptr)->size;
+		if (ptrSize > minSize && ptrSize >= size && ptrSize-size > excessSize)
+		{
+			worstBlock = ptr;
+			excessSize = ptrSize-size;
+			blockFound = 1;
+		}
+		ptr = ((free_block_head_t *)ptr)->next;
+	}
 	//	Checks if appropriate block is found.
 	if (blockFound)
 	{
 		//	Allocates the Memory Block
+		//sprintf(ps, "Worst = %p, sizeof = %d", worstBlock, ((free_block_head_t*)worstBlock)->size );
+		//puts(ps);
+		excessSize = *(int *)worstBlock - size - 2 * BLOCK_HEADER;
 		allocate_block(worstBlock, size, excessSize, 1);
 	}
 	else
@@ -353,7 +363,7 @@ void allocate_block(void *newBlock, int size, int excessSize, int fromFreeList)
 	 * Bottom header does not contain the pointers, thus min size of a free block must be larger than
 	 * free header block and tail block.
 	**/
-	addFreeBlock = excessSize > sizeof(free_block_head_t) + BLOCK_HEADER;
+	addFreeBlock = excessSize > minFreeSize;
 
 	//	If excess free size is big enough
 	if (addFreeBlock)
@@ -366,7 +376,7 @@ void allocate_block(void *newBlock, int size, int excessSize, int fromFreeList)
 
 		excessFreeBlock = newBlock + size + 2 * BLOCK_HEADER;
 		((free_block_head_t *)excessFreeBlock)->size =  excessSize;
-
+		((free_block_head_t *)newBlock)->size = size;
 		// Set the split blocks tails
 		tailTag = excessFreeBlock + excessSize + BLOCK_HEADER;
 		*tailTag = excessSize;
@@ -380,21 +390,23 @@ void allocate_block(void *newBlock, int size, int excessSize, int fromFreeList)
 		else
 		{
 			//	Adds excess free block to the free list
+			puts("Should be here");
 			add_block_freeList(excessFreeBlock);
 		}
 		// set the front header
-		((free_block_head_t *)newBlock)->size = size + 1;
+		((free_block_head_t *)newBlock)->size++;
 	}
 	//	Otherwise add the excess memory to the new block
 	else
 	{
 		//	TODO: Add excessSize to size and assign it to the new Block
-
+		int *tailTag = newBlock + size + BLOCK_HEADER;
+		*tailTag = size + 1;
+		((free_block_head_t *)newBlock)->size = size+1;
 		//	Checks if the new block was allocated from the free memory list
 		if (fromFreeList)
 		{
 			//	Removes the new block from the free list
-			puts("here2");
 			remove_block_freeList(newBlock);
 		}
 	}
@@ -411,7 +423,11 @@ void replace_block_freeList(void *oldBlock, void *newBlock)
 	//	TODO: Replace the old block with the new block
 	((free_block_head_t *)newBlock)->prev = ((free_block_head_t *)oldBlock)->prev;
 	((free_block_head_t *)newBlock)->next = ((free_block_head_t *)oldBlock)->next;
-
+	
+	if (((free_block_head_t *)oldBlock)->prev != NULL)
+		((free_block_head_t *)oldBlock)->prev->next = newBlock;
+	if (((free_block_head_t *)oldBlock)->next != NULL)
+		((free_block_head_t *)oldBlock)->next->prev = newBlock;
 	// Clear these in order to give this memory space back to the user
 	((free_block_head_t *)oldBlock)->prev = NULL;
 	((free_block_head_t *)oldBlock)->next = NULL;
@@ -427,8 +443,6 @@ void replace_block_freeList(void *oldBlock, void *newBlock)
 		// Swap tail of the list if it is the tail of the list
 		freeListTail = newBlock;
 	}
-	sprintf(ps, "alloced = %ld", totalAllocatedSize);
-	puts(ps);
 	//	Updates SMA info
 	totalAllocatedSize += (get_blockSize(oldBlock) - get_blockSize(newBlock));
 	totalFreeSize += (get_blockSize(newBlock) - get_blockSize(oldBlock));
@@ -481,39 +495,29 @@ void add_block_freeList(void *block)
 			}
 			else if (blockBefore % 2 == 0)
 			{
-				puts("Front Coalescence 1");
 				block = frontCoalescence(block, blockBefore);
 			} 
 			else if (blockAfter % 2 == 0)
-			{
-				puts("Rear Coalescence 1");
+			{	
 				block = rearCoalescence(block, blockAfter);
 			}
 			else
 			{
-				puts("none 1");
-				((free_block_head_t *)block)->next = NULL; 
-				((free_block_head_t *)freeListTail)->next = block;
-				((free_block_head_t *)block)->prev = freeListTail;
-				freeListTail = block;
+				addToTail(block);
 			}
 		}
 		else if(blockBefore % 2 == 0 && blockBefore != 0)
 		{
-			puts("Merge With Block In front 2");
-			frontCoalescence(block, blockBefore);
+			block = frontCoalescence(block, blockBefore);
 		}
 		else if (blockAfter != 0 && blockAfter % 2 == 0)
 		{
-			puts("Rear Coalescence 2");
+			puts("rear2");
+			block = rearCoalescence(block, blockAfter);
 		}
 		else
-		{
-			
-			((free_block_head_t *)block)->next = NULL; 
-			((free_block_head_t *)freeListTail)->next = block;
-			((free_block_head_t *)block)->prev = freeListTail;
-			freeListTail = block;
+		{	
+			addToTail(block);
 		}
 
 	}
@@ -629,13 +633,23 @@ void *rearCoalescence(void *block, int lengthBehind)
 	((free_block_head_t *)block)->size += 2 * BLOCK_HEADER + ((free_block_head_t *)blockBehind)->size;
 	int *blockTail = block + BLOCK_HEADER + ((free_block_head_t *)block)->size;
 	*blockTail =  ((free_block_head_t *)block)->size;
-	if (block == ((free_block_head_t *)blockBehind)->next)
+	if (((free_block_head_t *)blockBehind)->next != NULL && ((free_block_head_t *)blockBehind)->prev != NULL)
 	{
-		((free_block_head_t *)block)->prev = ((free_block_head_t *)blockBehind)-> prev;
+		
+		((free_block_head_t *)block)->prev = ((free_block_head_t *)blockBehind)->prev;
+		((free_block_head_t *)block)->next = ((free_block_head_t *)blockBehind)->next;
+		((free_block_head_t *)blockBehind)->prev->next = block;
+		((free_block_head_t *)blockBehind)->next->prev = block;
 	}
-	else if (block == ((free_block_head_t *)blockBehind)->prev)
+	else if (((free_block_head_t *)blockBehind)->next != NULL)
 	{
-		((free_block_head_t *)block)->next = ((free_block_head_t *)blockBehind)-> next;
+		((free_block_head_t *)block)->next = ((free_block_head_t *)blockBehind)->next;
+		((free_block_head_t *)blockBehind)->next->prev = block;
+	}
+	else if (((free_block_head_t *)blockBehind)->prev != NULL)
+	{
+		((free_block_head_t *)block)->prev = ((free_block_head_t *)blockBehind)->prev;
+		((free_block_head_t *)blockBehind)->prev->next = block;
 	}
 	else
 	{
@@ -657,4 +671,12 @@ void *rearCoalescence(void *block, int lengthBehind)
 	((free_block_head_t *)blockBehind)->prev = NULL;
 	((free_block_head_t *)blockBehind)->size = 0;
 	return block;
+}
+
+void addToTail(void *block)
+{
+	((free_block_head_t *)block)->next = NULL; 
+	((free_block_head_t *)freeListTail)->next = block;
+	((free_block_head_t *)block)->prev = freeListTail;
+	freeListTail = block;
 }

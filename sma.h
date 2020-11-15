@@ -50,5 +50,6 @@ static int get_blockSize(void *ptr);
 static int get_largest_freeBlock();
 //  TODO: Declare any private functions that you intend to add in your code.
 void freeListInfo();
-void *frontCoalescence(void *block, int lengthBefore);
-void *rearCoalescence(void *block, int lengthBehind);
+static void *frontCoalescence(void *block, int lengthBefore);
+static void *rearCoalescence(void *block, int lengthBehind);
+static void addToTail(void *block);
