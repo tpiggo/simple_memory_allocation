@@ -9,7 +9,10 @@ int main(int argc, char *argv[])
 	void *ptr, *limitafter = NULL, *limitbefore = NULL;
 	char *c[32], *ct;
 	char str[60];
-
+	puts("===============================");
+	puts("SMA stats");
+	sma_mallinfo();
+	puts("===============================");
 	// Test 1: Find the holes
 	puts("Test 1: Hole finding test...");
 	puts("Testing REPLACE ");
@@ -28,10 +31,14 @@ int main(int argc, char *argv[])
 		sprintf(str, "Freeing c[%d]: %p", i, c[i]);
 		puts(str);
 	}
-	freeListInfo();
+	for (i = 4; i < 8; i++)
+	{
+		sma_free(c[i]);
+		sprintf(str, "Freeing c[%d]: %p", i, c[i]);
+		puts(str);
+	}
 	// Allocate some storage .. this should go into the freed storage
-	ct = (char *)sma_malloc(8 * 1024 + 40);
-
+	ct = (char *)sma_malloc(8 * 1024 + 40); 
 	// Testing if you are finding the available holes
 	if (ct < c[31])
 		puts("\t\t\t\t PASSED\n");
@@ -40,7 +47,6 @@ int main(int argc, char *argv[])
 		puts("\t\t\t\t FAILED\n");
 		exit(0);
 	}
-	puts("----------- FreeList Should be empty --------- ");
 	freeListInfo();
 	//	Test 6: Print Stats
 	puts("Test 6: Print SMA Statistics...");

@@ -161,9 +161,9 @@ void sma_mallinfo()
 	char str[60];
 
 	//	Prints the SMA Stats
-	sprintf(str, "Total number of bytes allocated: %ld", totalAllocatedSize);
+	sprintf(str, "Total number of bytes allocated: %lu", totalAllocatedSize);
 	puts(str);
-	sprintf(str, "Total free space: %ld", totalFreeSize);
+	sprintf(str, "Total free space: %lu", totalFreeSize);
 	puts(str);
 	sprintf(str, "Size of largest contigious free space (in bytes): %d", largestFreeBlock);
 	puts(str);
@@ -403,7 +403,7 @@ void allocate_block(void *newBlock, int size, int excessSize, int fromFreeList)
 		//	TODO: Add excessSize to size and assign it to the new Block
 		int *tailTag = newBlock + size + BLOCK_HEADER;
 		*tailTag = size + 1;
-		((free_block_head_t *)newBlock)->size = size+1;
+		((free_block_head_t *)newBlock)->size = size;
 		//	Checks if the new block was allocated from the free memory list
 		if (fromFreeList)
 		{
@@ -411,6 +411,8 @@ void allocate_block(void *newBlock, int size, int excessSize, int fromFreeList)
 			puts("------ REPLACE BLOCK -------");
 			remove_block_freeList(newBlock);
 		}
+		((free_block_head_t *)newBlock)->size++;
+
 	}
 }
 
@@ -446,8 +448,8 @@ void replace_block_freeList(void *oldBlock, void *newBlock)
 		freeListTail = newBlock;
 	}
 	//	Updates SMA info
-	totalAllocatedSize += (get_blockSize(oldBlock) - get_blockSize(newBlock));
-	totalFreeSize += (get_blockSize(newBlock) - get_blockSize(oldBlock));
+	totalAllocatedSize += get_blockSize(oldBlock);
+	totalFreeSize -= get_blockSize(oldBlock);
 
 }
 
@@ -476,9 +478,11 @@ void add_block_freeList(void *block)
 		*(int *)block = *(int *)block - 1;
 		void *ptr = block + BLOCK_HEADER + *(int *)block;
 		*(int *)ptr = *(int *)ptr - 1;
-		flag = 1;
+		totalAllocatedSize -= get_blockSize(block);
 	}
-	int blockSize = *(int *)block;
+	//	Updates SMA info
+	totalFreeSize += get_blockSize(block);
+	
 	// Edge cases: No list
 	if (freeListHead == NULL)
 	{
@@ -527,13 +531,6 @@ void add_block_freeList(void *block)
 		}
 
 	}
-
-	//	Updates SMA info
-	if (flag == 1)
-	{
-		totalAllocatedSize -= blockSize;
-	}
-	totalFreeSize += blockSize;
 }
 
 /*
@@ -548,9 +545,34 @@ void remove_block_freeList(void *block)
 	//	Hint: 	You need to update the pointers in the free blocks before and after this block.
 	//			You also need to remove any TAG in the free block.
 
+	if (block == freeListHead && block == freeListTail)
+	{
+		freeListHead = NULL;
+		freeListTail = NULL;
+	}
+	else if (block == freeListHead)
+	{
+		freeListHead = ((free_block_head_t *)block)->next;
+		((free_block_head_t *)block)->next->prev = NULL;
+	}
+	else if (block == freeListTail)
+	{
+		freeListTail = ((free_block_head_t *)block)->prev;
+		((free_block_head_t *)block)->prev->next = NULL;
+	}
+	else
+	{
+		((free_block_head_t *)block)->prev->next = ((free_block_head_t *)block)->next;
+		((free_block_head_t *)block)->next->prev = ((free_block_head_t *)block)->prev;
+		((free_block_head_t *)block)->next = NULL;
+		((free_block_head_t *)block)->prev = NULL;
+	}
 	//	Updates SMA info
-	totalAllocatedSize += get_blockSize(block);
 	totalFreeSize -= get_blockSize(block);
+	puts("===============================");
+	puts("SMA stats in REMOVE");
+	sma_mallinfo();
+	puts("===============================");
 }
 
 /*
