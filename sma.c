@@ -233,8 +233,9 @@ void *allocate_pBrk(int size)
 	excessSize = excessSize - size - 2 * BLOCK_HEADER;
 	//	Allocates the Memory Block by sending the whole newBlock to get allocated accordingly.
 	allocate_block(newBlock, size, excessSize, 0);
-	//return newBlock + BLOCK_HEADER;
-	return newBlock;
+	// Move forward to the free space
+	return newBlock + BLOCK_HEADER;
+	//return newBlock;
 }
 
 /*
@@ -298,10 +299,10 @@ void *allocate_worst_fit(int size)
 	if (blockFound)
 	{
 		//	Allocates the Memory Block
-		//sprintf(ps, "Worst = %p, sizeof = %d", worstBlock, ((free_block_head_t*)worstBlock)->size );
-		//puts(ps);
 		excessSize = *(int *)worstBlock - size - 2 * BLOCK_HEADER;
 		allocate_block(worstBlock, size, excessSize, 1);
+		// Move forward to the free space
+		worstBlock = worstBlock + BLOCK_HEADER;
 	}
 	else
 	{
@@ -380,7 +381,6 @@ void allocate_block(void *newBlock, int size, int excessSize, int fromFreeList)
 		// Set the split blocks tails
 		tailTag = excessFreeBlock + excessSize + BLOCK_HEADER;
 		*tailTag = excessSize;
-
 		//	Checks if the new block was allocated from the free memory list
 		if (fromFreeList)
 		{
@@ -390,6 +390,8 @@ void allocate_block(void *newBlock, int size, int excessSize, int fromFreeList)
 		else
 		{
 			//	Adds excess free block to the free list
+			// FIXING REWING PROBLEM
+			excessFreeBlock = excessFreeBlock + BLOCK_HEADER;
 			add_block_freeList(excessFreeBlock);
 		}
 		// set the front header
@@ -406,6 +408,7 @@ void allocate_block(void *newBlock, int size, int excessSize, int fromFreeList)
 		if (fromFreeList)
 		{
 			//	Removes the new block from the free list
+			puts("------ REPLACE BLOCK -------");
 			remove_block_freeList(newBlock);
 		}
 	}
@@ -462,6 +465,10 @@ void add_block_freeList(void *block)
 	//			Also, you would need to check if merging with the "adjacent" blocks is possible or not.
 	//			Merging would be tideous. Check adjacent blocks, then also check if the merged
 	//			block is at the top and is bigger than the largest free block allowed (128kB).
+	
+	// Problem: Pointer to memory coming from free is pointing to the freeMemory space and not the head. Rewind!
+	block = block - BLOCK_HEADER; 
+
 	int flag = 0;
 	// Coming from free, the block was in use, therefore, we need to reset the length and reset flag
 	if ((*(int *)block % 2) != 0)

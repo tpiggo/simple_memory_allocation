@@ -94,11 +94,10 @@ int main(int argc, char *argv[])
 		puts(str);
 	}
 	
-	freeListInfo();
+	// freeListInfo();
 
 	// Now deallocating some of the slots ..to free
 	// One chunk of 5x16 kbytes
-	puts("------------here!-------------");
 	sma_free(c[31]);
 	sma_free(c[30]);
 	sma_free(c[29]);
