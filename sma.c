@@ -390,7 +390,6 @@ void allocate_block(void *newBlock, int size, int excessSize, int fromFreeList)
 		else
 		{
 			//	Adds excess free block to the free list
-			puts("Should be here");
 			add_block_freeList(excessFreeBlock);
 		}
 		// set the front header
@@ -594,10 +593,10 @@ void freeListInfo()
 {
 	void *ptr = freeListHead;
 	int i = 0;
-	while (ptr != NULL && i < 5)
+	puts("=================");
+	while (ptr != NULL)
 	{
 		char str[50];
-		puts("--------");
 		sprintf(str, "currentaddr: %p", ptr);
 		puts(str);
 		int ptr_size = ((free_block_head_t *)ptr)->size;
@@ -609,10 +608,12 @@ void freeListInfo()
 		void *ptr_p = ((free_block_head_t *)ptr)->prev;
 		sprintf(str, "prev addr: %p", ptr_p);
 		puts(str);
-		puts("--------");
 		ptr = ptr_n;
+		if (ptr != NULL)
+			puts("-----------------");
 		i++;
 	}
+	puts("=================");
 	
 }
 
