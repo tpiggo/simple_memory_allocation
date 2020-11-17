@@ -122,6 +122,9 @@ int main(int argc, char *argv[])
 	int *cp2 = (int *)sma_malloc(16 * 1024 * 2);
 
 	freeListInfo();
+	// puts("Test 6: Print SMA Statistics...");
+	// puts("===============================");
+	// sma_mallinfo();
 	// Testing if the correct hole has been allocated
 	if (cp2 != NULL)
 	{
@@ -137,7 +140,6 @@ int main(int argc, char *argv[])
 
 	//	Freeing cp2
 	sma_free(cp2);
-
 	// Test 4: Next Fit Test
 	puts("Test 4: Check for Next Fit algorithm...");
 	// Sets Policy to Next Fit

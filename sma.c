@@ -346,11 +346,9 @@ void allocate_block(void *newBlock, int size, int excessSize, int fromFreeList)
 {
 	void *excessFreeBlock; //	pointer for any excess free block
 	int addFreeBlock;
-	// sprintf(ps, "Here allocating %d with excess %d. fromFreeList = %d ", size, excessSize, fromFreeList);
-	// puts(ps);
-	// addFreeBlock = excessSize > minFreeSize;
-	// sprintf(ps, "addFree = %d", addFreeBlock);
-	// puts(ps);
+	/** 
+	 * TODO: Refractor Code! Need proper casting
+	 */
 
 	//	If excess free size is big enough
 	if (addFreeBlock)
@@ -363,7 +361,7 @@ void allocate_block(void *newBlock, int size, int excessSize, int fromFreeList)
 		((free_block_head_t *)excessFreeBlock)->size =  excessSize;
 		((free_block_head_t *)newBlock)->size = size;
 		// Set the split blocks tails
-		tailTag = excessFreeBlock + excessSize + BLOCK_HEADER;
+		tailTag = (int *)((char *)excessFreeBlock + excessSize + BLOCK_HEADER);
 		*tailTag = excessSize;
 		//	Checks if the new block was allocated from the free memory list
 		if (fromFreeList)
@@ -374,7 +372,7 @@ void allocate_block(void *newBlock, int size, int excessSize, int fromFreeList)
 		else
 		{
 			//	Adds excess free block to the free list
-			excessFreeBlock = excessFreeBlock + BLOCK_HEADER;
+			excessFreeBlock = (void *)((char *)excessFreeBlock + BLOCK_HEADER);
 			add_block_freeList(excessFreeBlock);
 		}
 		// set the front header
@@ -384,7 +382,7 @@ void allocate_block(void *newBlock, int size, int excessSize, int fromFreeList)
 	else
 	{
 		//	TODO: Add excessSize to size and assign it to the new Block
-		int *tailTag = newBlock + size + BLOCK_HEADER;
+		int *tailTag = (int *)((char *)newBlock + size + BLOCK_HEADER);
 		*tailTag = size + 1;
 		((free_block_head_t *)newBlock)->size = size;
 		//	Checks if the new block was allocated from the free memory list
@@ -406,7 +404,9 @@ void allocate_block(void *newBlock, int size, int excessSize, int fromFreeList)
  */
 void replace_block_freeList(void *oldBlock, void *newBlock)
 {
-	//	TODO: Replace the old block with the new block
+	/** 
+	 * TODO: Refractor Code! Need proper casting
+	 */
 	((free_block_head_t *)newBlock)->prev = ((free_block_head_t *)oldBlock)->prev;
 	((free_block_head_t *)newBlock)->next = ((free_block_head_t *)oldBlock)->next;
 	
@@ -449,7 +449,9 @@ void add_block_freeList(void *block)
 	//			Also, you would need to check if merging with the "adjacent" blocks is possible or not.
 	//			Merging would be tideous. Check adjacent blocks, then also check if the merged
 	//			block is at the top and is bigger than the largest free block allowed (128kB).
-	
+	/** 
+	 * TODO: Refractor Code! Need proper casting
+	 */
 	// Problem: Pointer to memory coming from free is pointing to the freeMemory space and not the head. Rewind!
 	block = block - BLOCK_HEADER; 
 	free_block_head_t *pBlock = (free_block_head_t *)block;
@@ -477,6 +479,8 @@ void add_block_freeList(void *block)
 		void *currentBlock = block;
 		int blockBefore = *(int *)(block - BLOCK_HEADER);
 		int blockAfter = *(int *)(block + 2 * BLOCK_HEADER + *(int *)block);
+		// Should fix these to reflect what they are actually looking at.
+		// Looking for being at the start of the heap (heapAbsHead), or sbrk(0)
 		if (blockBefore != 0 && blockAfter != 0)
 		{
 			if (blockBefore % 2 == 0 && blockAfter % 2 == 0)
@@ -525,6 +529,9 @@ void remove_block_freeList(void *block)
 	//	TODO: 	Remove the block from the free list
 	//	Hint: 	You need to update the pointers in the free blocks before and after this block.
 	//			You also need to remove any TAG in the free block.
+	/** 
+	 * TODO: Refractor Code! Need proper casting
+	 */
 
 	if (block == freeListHead && block == freeListTail)
 	{
@@ -580,18 +587,20 @@ int get_largest_freeBlock()
 {
 	int largestBlockSize = 0;
 
-	//	TODO: Iterate through the Free Block List to find the largest free block and return its size
-	void *ptr = freeListHead;
+	free_block_head_t *ptr = (free_block_head_t *)freeListHead;
+	free_block_head_t *largest;
 	while (ptr != NULL)
 	{
-		int ptrSize = ((free_block_head_t *)ptr)->size;
+		int ptrSize = ptr->size;
 		if (largestBlockSize < ptrSize)
 		{
 			largestBlockSize = ptrSize;
+			largest = ptr;
 		}
-		ptr = ((free_block_head_t *)ptr)->next;;
+		ptr = ptr->next;
 	}
-
+	sprintf(ps, "largest is block %p with size %d", largest, largest->size);
+	puts(ps);
 	return largestBlockSize;
 }
 
@@ -625,17 +634,19 @@ void freeListInfo()
 
 void *frontCoalescence(void *block, int lengthBefore)
 {
-	//int blockSize = *(int *)block;
-	void *blockInfront = block - 2 * BLOCK_HEADER - lengthBefore;
-	((free_block_head_t *)blockInfront)->size += 2 * BLOCK_HEADER + ((free_block_head_t *)block)->size;
-	int *blockTail = block + BLOCK_HEADER + *(int *)block;
+	free_block_head_t *pBlock = (free_block_head_t *)block;
+	void *blockInfront = (void *)((char *)block - 2 * BLOCK_HEADER - lengthBefore);
+	((free_block_head_t *)blockInfront)->size += 2 * BLOCK_HEADER + pBlock->size;
+	int *blockTail = (int *)((char *)block + BLOCK_HEADER + pBlock->size);
 	*blockTail =  ((free_block_head_t *)blockInfront)->size;
 	return blockInfront;
 }
 
 void *rearCoalescence(void *block, int lengthBehind)
 {
-	//int blockSize = *(int *)block;
+	/** TODO: Refractor Code here! Need proper casting
+	 * 
+	 */ 
 	void *blockBehind = block + 2 * BLOCK_HEADER + *(int *)block;
 	((free_block_head_t *)block)->size += 2 * BLOCK_HEADER + ((free_block_head_t *)blockBehind)->size;
 	int *blockTail = block + BLOCK_HEADER + ((free_block_head_t *)block)->size;
