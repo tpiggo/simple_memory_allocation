@@ -121,13 +121,14 @@ int main(int argc, char *argv[])
 
 	int *cp2 = (int *)sma_malloc(16 * 1024 * 2);
 
+	freeListInfo();
 	// Testing if the correct hole has been allocated
 	if (cp2 != NULL)
 	{
 		if (cp2 == c2[27] || cp2 == c2[28] || cp2 == c2[29] || cp2 == c2[30])
 			puts("\t\t\t\t PASSED\n");
 		else
-			puts("\t\t\t\t FAILED\n");
+			puts("\t\t\t\t FAILED NOT NULL\n");
 	}
 	else
 	{
