@@ -54,7 +54,8 @@ Policy currentPolicy = WORST;		  //	Current Policy
 int minFreeSize = sizeof(free_block_head_t) + BLOCK_HEADER;
 void *heapStart;
 void *heapEnd;
-
+void *nextFitStart = NULL;
+int nextFitSet = 0;
 /*
  * =====================================================================================
  *	Public Functions for SMA
@@ -299,7 +300,7 @@ void *allocate_worst_fit(int size)
 		//	Allocates the Memory Block
 		allocate_block(worstBlock, size, excessSize, 1);
 		// Move forward to the free space
-		worstBlock = worstBlock + BLOCK_HEADER;
+		worstBlock = (void *)((char *)worstBlock + BLOCK_HEADER);
 	}
 	else
 	{
@@ -326,10 +327,35 @@ void *allocate_next_fit(int size)
 	//	Hint:	Start off with the freeListHead, and keep track of the current position in the free memory list.
 	//			The next time you allocate, it should start from the current position.
 	//	Checks if appropriate found is found.
+	if (nextFitSet == 0)
+		nextFitStart = freeListHead;
+	nextFitSet = 1;
+
+	puts("Here");
+	free_block_head_t *listEntry = (free_block_head_t *)nextFitStart; 
+	while (listEntry != NULL && blockFound == 0)
+	{
+		if (listEntry->size >= size)
+		{
+			blockFound = 1;
+			nextBlock = (void *)listEntry;
+			excessSize = listEntry->size - size - 2*BLOCK_HEADER;
+		}
+		listEntry = listEntry->next;
+	}
+
+
 	if (blockFound)
 	{
 		//	Allocates the Memory Block
+		if (((free_block_head_t *)nextBlock)->next == NULL)
+			nextFitStart = freeListHead;
+		else
+			nextFitStart = (void *)((free_block_head_t *)nextBlock)->next;
 		allocate_block(nextBlock, size, excessSize, 1);
+		nextBlock = (void *)((char *)nextBlock + BLOCK_HEADER);
+		if (excessSize > minFreeSize)
+			nextFitStart = (void *)((free_block_head_t *)nextFitStart)->prev;
 	}
 	else
 	{
@@ -521,9 +547,11 @@ void add_block_freeList(void *block)
 	void *rearBlock = (void *)((char *)block + pBlock->size + 2 * BLOCK_HEADER); 
 	if (rearBlock == heapEnd && pBlock->size > MAX_TOP_FREE)
 	{
-		freeListInfo();
-		puts("Need to cut down the TOP!!");
-		
+		int extraFree = pBlock->size - MAX_TOP_FREE;
+		pBlock->size = MAX_TOP_FREE;
+		int *tailTag = (int *)((char *)block + pBlock->size + BLOCK_HEADER);
+		*tailTag = pBlock->size;
+		sbrk(-extraFree);
 	}
 }
 
