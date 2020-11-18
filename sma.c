@@ -52,6 +52,8 @@ unsigned long totalFreeSize = 0;	  //	Total Free memory in Bytes in the free mem
 Policy currentPolicy = WORST;		  //	Current Policy
 //	TODO: Add any global variables here
 int minFreeSize = sizeof(free_block_head_t) + BLOCK_HEADER;
+void *heapStart;
+void *heapEnd;
 
 /*
  * =====================================================================================
@@ -205,12 +207,15 @@ void *allocate_pBrk(int size)
 	int newBlockSize = size + headers;
 	int excessSize = maxKB * 1024 ;
 	int totalSize = newBlockSize + excessSize + headers ;
+	if (heapStart == NULL)
+		heapStart = sbrk(0);
 	newBlock = sbrk(totalSize);
 	if (newBlock == NULL)
 	{
 		sprintf(sma_malloc_error, "Error allocating\n");
 		return NULL;
 	}
+	heapEnd = sbrk(0);
 	int *blockFront = (int *)newBlock -1;
 	((free_block_head_t *)newBlock)->next = NULL;
 	((free_block_head_t *)newBlock)->prev = NULL;
@@ -280,10 +285,10 @@ void *allocate_worst_fit(int size)
 	while (ptr != NULL)
 	{
 		int ptrSize = ((free_block_head_t *)ptr)->size;
-		if (ptrSize > minSize && ptrSize >= size && (ptrSize-size) >= excessSize)
+		if (ptrSize > minSize && ptrSize >= size && (ptrSize-size-2*BLOCK_HEADER) >= excessSize)
 		{
 			worstBlock = ptr;
-			excessSize = ptrSize-size;
+			excessSize = ptrSize-size - 2*BLOCK_HEADER;
 			blockFound = 1;
 		}
 		ptr = ((free_block_head_t *)ptr)->next;
@@ -292,7 +297,6 @@ void *allocate_worst_fit(int size)
 	if (blockFound)
 	{
 		//	Allocates the Memory Block
-		excessSize = *(int *)worstBlock - size - 2 * BLOCK_HEADER;
 		allocate_block(worstBlock, size, excessSize, 1);
 		// Move forward to the free space
 		worstBlock = worstBlock + BLOCK_HEADER;
@@ -345,11 +349,10 @@ void *allocate_next_fit(int size)
 void allocate_block(void *newBlock, int size, int excessSize, int fromFreeList)
 {
 	void *excessFreeBlock; //	pointer for any excess free block
-	int addFreeBlock;
+	int addFreeBlock  = excessSize > minFreeSize;
 	/** 
 	 * TODO: Refractor Code! Need proper casting
 	 */
-
 	//	If excess free size is big enough
 	if (addFreeBlock)
 	{
@@ -407,31 +410,36 @@ void replace_block_freeList(void *oldBlock, void *newBlock)
 	/** 
 	 * TODO: Refractor Code! Need proper casting
 	 */
-	((free_block_head_t *)newBlock)->prev = ((free_block_head_t *)oldBlock)->prev;
-	((free_block_head_t *)newBlock)->next = ((free_block_head_t *)oldBlock)->next;
+	free_block_head_t *pNewBlock = (free_block_head_t *)newBlock;
+	free_block_head_t *pOldBlock = (free_block_head_t *)oldBlock;
+
+	pNewBlock->prev = pOldBlock->prev;
+	pNewBlock->next = pOldBlock->next;
 	
-	if (((free_block_head_t *)oldBlock)->prev != NULL)
-		((free_block_head_t *)oldBlock)->prev->next = newBlock;
-	if (((free_block_head_t *)oldBlock)->next != NULL)
-		((free_block_head_t *)oldBlock)->next->prev = newBlock;
+	if (pOldBlock->prev != NULL)
+		pOldBlock->prev->next = pNewBlock;
+	if (pOldBlock->next != NULL)
+		pOldBlock->next->prev = pNewBlock;
 	// Clear these in order to give this memory space back to the user
-	((free_block_head_t *)oldBlock)->prev = NULL;
-	((free_block_head_t *)oldBlock)->next = NULL;
+	pOldBlock->prev = NULL;
+	pOldBlock->next = NULL;
 
 	if (oldBlock == freeListHead)
 	{
 		// Swap head of the list if it is the head of the list
-		freeListHead = newBlock;
+		freeListHead = pNewBlock;
 	}
 
 	if (oldBlock == freeListTail)
 	{
 		// Swap tail of the list if it is the tail of the list
-		freeListTail = newBlock;
+		freeListTail = pNewBlock;
 	}
 	//	Updates SMA info
-	totalAllocatedSize += get_blockSize(oldBlock);
-	totalFreeSize -= get_blockSize(oldBlock);
+
+	void *intOldBlock = (void *)((int *)newBlock + 1);
+	totalAllocatedSize += get_blockSize(intOldBlock);
+	totalFreeSize -= get_blockSize(intOldBlock);
 
 }
 
@@ -443,29 +451,20 @@ void replace_block_freeList(void *oldBlock, void *newBlock)
  */
 void add_block_freeList(void *block)
 {
-	//	TODO: 	Add the block to the free list
-	//	Hint: 	You could add the free block at the end of the list, but need to check if there
-	//			exists a list. You need to add the TAG to the list.
-	//			Also, you would need to check if merging with the "adjacent" blocks is possible or not.
-	//			Merging would be tideous. Check adjacent blocks, then also check if the merged
-	//			block is at the top and is bigger than the largest free block allowed (128kB).
-	/** 
-	 * TODO: Refractor Code! Need proper casting
-	 */
-	// Problem: Pointer to memory coming from free is pointing to the freeMemory space and not the head. Rewind!
 	block = block - BLOCK_HEADER; 
 	free_block_head_t *pBlock = (free_block_head_t *)block;
 	int flag = 0;
 	// Coming from free, the block was in use, therefore, we need to reset the length and reset flag
+	void *intBlock = (void *)((int *)block + 1);
 	if ((pBlock->size % 2) != 0)
 	{
 		pBlock->size = pBlock->size - 1;
-		void *ptr = (int *)((char *)block + BLOCK_HEADER + pBlock->size);
-		*(int *)ptr = *(int *)ptr - 1;
-		totalAllocatedSize -= get_blockSize(block);
+		int *ptr = (int *)((char *)block + BLOCK_HEADER + pBlock->size);
+		*ptr = *ptr - 1;
+		totalAllocatedSize -= get_blockSize(intBlock);
 	}
 	//	Updates SMA info
-	totalFreeSize += get_blockSize(block);
+	totalFreeSize += get_blockSize(intBlock);
 	// Edge cases: No list
 	if (freeListHead == NULL)
 	{
@@ -476,9 +475,9 @@ void add_block_freeList(void *block)
 	// If it is, merge.
 	else
 	{	
-		void *currentBlock = block;
-		int blockBefore = *(int *)(block - BLOCK_HEADER);
-		int blockAfter = *(int *)(block + 2 * BLOCK_HEADER + *(int *)block);
+		free_block_head_t *currentBlock = block;
+		int blockBefore = *(int *)((char *)block - BLOCK_HEADER);
+		int blockAfter = *(int *)((char *)block + 2 * BLOCK_HEADER + currentBlock->size);
 		// Should fix these to reflect what they are actually looking at.
 		// Looking for being at the start of the heap (heapAbsHead), or sbrk(0)
 		if (blockBefore != 0 && blockAfter != 0)
@@ -498,7 +497,8 @@ void add_block_freeList(void *block)
 			}
 			else
 			{
-				addToTail(block);
+				addToSortedList(block);
+				//addToTail(block);
 			}
 		}
 		else if(blockBefore % 2 == 0 && blockBefore != 0)
@@ -507,14 +507,23 @@ void add_block_freeList(void *block)
 		}
 		else if (blockAfter != 0 && blockAfter % 2 == 0)
 		{
-			puts("rear2");
 			block = rearCoalescence(block, blockAfter);
 		}
 		else
 		{	
-			addToTail(block);
+			addToSortedList(block);
+			//addToTail(block);
 		}
 
+	}
+	// Check if the new block is near the top and too large. Trim if so.
+	pBlock = (free_block_head_t *)block;
+	void *rearBlock = (void *)((char *)block + pBlock->size + 2 * BLOCK_HEADER); 
+	if (rearBlock == heapEnd && pBlock->size > MAX_TOP_FREE)
+	{
+		freeListInfo();
+		puts("Need to cut down the TOP!!");
+		
 	}
 }
 
@@ -526,12 +535,7 @@ void add_block_freeList(void *block)
  */
 void remove_block_freeList(void *block)
 {
-	//	TODO: 	Remove the block from the free list
-	//	Hint: 	You need to update the pointers in the free blocks before and after this block.
-	//			You also need to remove any TAG in the free block.
-	/** 
-	 * TODO: Refractor Code! Need proper casting
-	 */
+	free_block_head_t *pBlock = (free_block_head_t *)block;
 
 	if (block == freeListHead && block == freeListTail)
 	{
@@ -540,23 +544,25 @@ void remove_block_freeList(void *block)
 	}
 	else if (block == freeListHead)
 	{
-		freeListHead = ((free_block_head_t *)block)->next;
-		((free_block_head_t *)block)->next->prev = NULL;
+		freeListHead = pBlock->next;
+		pBlock->next->prev = NULL;
 	}
 	else if (block == freeListTail)
 	{
-		freeListTail = ((free_block_head_t *)block)->prev;
-		((free_block_head_t *)block)->prev->next = NULL;
+		freeListTail = pBlock->prev;
+		pBlock->prev->next = NULL;
 	}
 	else
 	{
-		((free_block_head_t *)block)->prev->next = ((free_block_head_t *)block)->next;
-		((free_block_head_t *)block)->next->prev = ((free_block_head_t *)block)->prev;
-		((free_block_head_t *)block)->next = NULL;
-		((free_block_head_t *)block)->prev = NULL;
+		pBlock->prev->next = pBlock->next;
+		pBlock->next->prev = pBlock->prev;
+		pBlock->next = NULL;
+		pBlock->prev = NULL;
 	}
 	//	Updates SMA info
-	totalFreeSize -= get_blockSize(block);
+
+	void *intBlock = (void *)((int *)block + 1);
+	totalFreeSize -= get_blockSize(intBlock);
 }
 
 /*
@@ -571,10 +577,9 @@ int get_blockSize(void *ptr)
 
 	//	Points to the address where the Length of the block is stored
 	pSize = (int *)ptr;
-	//pSize--;
-
+	pSize--;
 	//	Returns the deferenced size
-	return *(int *)pSize;
+	return *(int *)pSize ;
 }
 
 /*
@@ -599,8 +604,6 @@ int get_largest_freeBlock()
 		}
 		ptr = ptr->next;
 	}
-	sprintf(ps, "largest is block %p with size %d", largest, largest->size);
-	puts(ps);
 	return largestBlockSize;
 }
 
@@ -635,44 +638,41 @@ void freeListInfo()
 void *frontCoalescence(void *block, int lengthBefore)
 {
 	free_block_head_t *pBlock = (free_block_head_t *)block;
-	void *blockInfront = (void *)((char *)block - 2 * BLOCK_HEADER - lengthBefore);
-	((free_block_head_t *)blockInfront)->size += 2 * BLOCK_HEADER + pBlock->size;
+	free_block_head_t *blockInfront = (free_block_head_t *)((char *)block - 2 * BLOCK_HEADER - lengthBefore);
+	blockInfront->size += 2 * BLOCK_HEADER + pBlock->size;
 	int *blockTail = (int *)((char *)block + BLOCK_HEADER + pBlock->size);
-	*blockTail =  ((free_block_head_t *)blockInfront)->size;
+	*blockTail =  blockInfront->size;
 	return blockInfront;
 }
 
 void *rearCoalescence(void *block, int lengthBehind)
 {
-	/** TODO: Refractor Code here! Need proper casting
-	 * 
-	 */ 
-	void *blockBehind = block + 2 * BLOCK_HEADER + *(int *)block;
-	((free_block_head_t *)block)->size += 2 * BLOCK_HEADER + ((free_block_head_t *)blockBehind)->size;
-	int *blockTail = block + BLOCK_HEADER + ((free_block_head_t *)block)->size;
-	*blockTail =  ((free_block_head_t *)block)->size;
-	if (((free_block_head_t *)blockBehind)->next != NULL && ((free_block_head_t *)blockBehind)->prev != NULL)
+	free_block_head_t *pBlock = (free_block_head_t *)block;
+	free_block_head_t *blockBehind = (free_block_head_t *)((char *)block + 2 * BLOCK_HEADER + pBlock->size);
+	pBlock->size += 2 * BLOCK_HEADER + blockBehind->size;
+	int *blockTail = (int *)((char *)block + BLOCK_HEADER + pBlock->size);
+	*blockTail =  pBlock->size;
+	if (blockBehind->next != NULL && blockBehind->prev != NULL)
 	{
-		
-		((free_block_head_t *)block)->prev = ((free_block_head_t *)blockBehind)->prev;
-		((free_block_head_t *)block)->next = ((free_block_head_t *)blockBehind)->next;
-		((free_block_head_t *)blockBehind)->prev->next = block;
-		((free_block_head_t *)blockBehind)->next->prev = block;
+		pBlock->prev = blockBehind->prev;
+		pBlock->next = blockBehind->next;
+		blockBehind->prev->next = block;
+		blockBehind->next->prev = block;
 	}
-	else if (((free_block_head_t *)blockBehind)->next != NULL)
+	else if (blockBehind->next != NULL)
 	{
-		((free_block_head_t *)block)->next = ((free_block_head_t *)blockBehind)->next;
-		((free_block_head_t *)blockBehind)->next->prev = block;
+		pBlock->next = blockBehind->next;
+		blockBehind->next->prev = pBlock;
 	}
-	else if (((free_block_head_t *)blockBehind)->prev != NULL)
+	else if (blockBehind->prev != NULL)
 	{
-		((free_block_head_t *)block)->prev = ((free_block_head_t *)blockBehind)->prev;
-		((free_block_head_t *)blockBehind)->prev->next = block;
+		pBlock->prev = blockBehind->prev;
+		blockBehind->prev->next = block;
 	}
 	else
 	{
-		((free_block_head_t *)block)->prev = ((free_block_head_t *)blockBehind)->prev;
-		((free_block_head_t *)block)->next = ((free_block_head_t *)blockBehind)->next;
+		pBlock->prev = blockBehind->prev;
+		pBlock->next = blockBehind->next;
 	}
 
 	if (blockBehind == freeListHead)
@@ -685,16 +685,50 @@ void *rearCoalescence(void *block, int lengthBehind)
 	}
 
 	// Set the values to NULL
-	((free_block_head_t *)blockBehind)->next = NULL;
-	((free_block_head_t *)blockBehind)->prev = NULL;
-	((free_block_head_t *)blockBehind)->size = 0;
+	blockBehind->next = NULL;
+	blockBehind->prev = NULL;
+	blockBehind->size = 0;
 	return block;
 }
 
 void addToTail(void *block)
 {
-	((free_block_head_t *)block)->next = NULL; 
+	free_block_head_t *pBlock = (free_block_head_t *)block;
+	pBlock->next = NULL; 
 	((free_block_head_t *)freeListTail)->next = block;
-	((free_block_head_t *)block)->prev = freeListTail;
+	pBlock->prev = freeListTail;
 	freeListTail = block;
+}
+
+void addToSortedList(void *block)
+{
+	free_block_head_t *pBlock = (free_block_head_t *)block;
+	free_block_head_t *listEntry = (free_block_head_t *)freeListHead;
+	int added = 0;
+	while (listEntry != NULL)
+	{
+		if (listEntry > pBlock)
+		{
+			added = 1;
+			if (listEntry == freeListHead)
+			{
+				pBlock->next = listEntry;
+				listEntry->prev = pBlock;
+				freeListHead = block;
+			}
+			else 
+			{
+				listEntry->prev->next = pBlock;
+				pBlock->next = listEntry;
+				pBlock->prev = listEntry->prev;
+				listEntry->prev = pBlock;
+			}
+			break;
+		}
+		listEntry = listEntry->next; 
+	}
+	if (added == 0)
+	{
+		addToTail(block);
+	}
 }
