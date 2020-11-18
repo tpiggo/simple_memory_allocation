@@ -53,3 +53,4 @@ void freeListInfo();
 static void *frontCoalescence(void *block, int lengthBefore);
 static void *rearCoalescence(void *block, int lengthBehind);
 static void addToTail(void *block);
+static void addToSortedList(void *block);
