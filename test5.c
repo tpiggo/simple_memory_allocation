@@ -141,6 +141,7 @@ int main(int argc, char *argv[])
 	//	Freeing cp2
 	sma_free(cp2);
 	// Test 4: Next Fit Test
+	freeListInfo();
 	puts("Test 4: Check for Next Fit algorithm...");
 	// Sets Policy to Next Fit
 	sma_mallopt(NEXT_FIT);
@@ -196,7 +197,13 @@ int main(int argc, char *argv[])
 	else if (cp3 == c2[27] && cp4 == c2[8])
 	{
 		puts("\t\t\t\t FAILED RIGHT MEM ADDR\n");
-	} 
+	}
+	else if ( cp3 == c2[27] )
+	{
+		puts("\t\t\t\t FAILED CP3 right ADDR\n");
+		if (cp3 != NULL)
+			puts("\t\t\t\t FAILED CP3 right VAL\n");
+	}
     else
     {
         puts("\t\t\t\t FAILED NOTHING\n");

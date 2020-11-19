@@ -120,8 +120,6 @@ int main(int argc, char *argv[])
 	sma_free(c2[4]);
 
 	int *cp2 = (int *)sma_malloc(16 * 1024 * 2);
-
-	freeListInfo();
 	// puts("Test 6: Print SMA Statistics...");
 	// puts("===============================");
 	// sma_mallinfo();
@@ -144,7 +142,6 @@ int main(int argc, char *argv[])
 	puts("Test 4: Check for Next Fit algorithm...");
 	// Sets Policy to Next Fit
 	sma_mallopt(NEXT_FIT);
-
 	int *cp3 = (int *)sma_malloc(16 * 1024 * 3);
 	int *cp4 = (int *)sma_malloc(16 * 1024 * 2);
 
@@ -168,7 +165,7 @@ int main(int argc, char *argv[])
 	{
 		puts("\t\t\t\t FAILED\n");
 	}
-
+	freeListInfo();
 	// Test 5: Realloc test (with Next Fit)
 	puts("Test 5: Check for Reallocation with Next Fit...");
 	// Writes some value pointed by the pointer
