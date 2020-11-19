@@ -92,7 +92,7 @@ int main(int argc, char *argv[])
 	// Allocating 512 kbytes of memory..
 	for (i = 0; i < 32; i++)
     {
-        c2[i] = (int *)sma_malloc(16 * 1024);
+        c2[i] = (int *)sma_malloc(16 * 1025);
         sprintf(str, "c2[%d]: %p", i, c2[i]);
 		puts(str);
     }

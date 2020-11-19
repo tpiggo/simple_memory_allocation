@@ -248,6 +248,8 @@ void *allocate_pBrk(int size)
 	void *newBlock = NULL;
 	int headers = 2 * BLOCK_HEADER;
 	int newBlockSize = size + headers;
+	if (newBlockSize % 8 != 0)
+		newBlockSize += 8 - newBlockSize % 8;
 	int excessSize = maxKB * 1024 ;
 	int totalSize = newBlockSize + excessSize + headers ;
 	if (heapStart == NULL)
@@ -326,7 +328,8 @@ void *allocate_worst_fit(int size)
 
 	void *ptr = freeListHead;
 	excessSize = 0;
-	
+	if (size % 8 != 0)
+		size += 8 - size % 8;
 	while (ptr != NULL)
 	{
 		int ptrSize = ((free_block_head_t *)ptr)->size;
@@ -345,7 +348,6 @@ void *allocate_worst_fit(int size)
 		allocate_block(worstBlock, size, excessSize, 1);
 		// Move forward to the free space
 		worstBlock = (void *)((char *)worstBlock + BLOCK_HEADER);
-		totalAllocatedSize += size;
 	}
 	else
 	{
@@ -375,6 +377,9 @@ void *allocate_next_fit(int size)
 		
 	nextFitSet = 1;
 	free_block_head_t *listEntry = (free_block_head_t *)nextFitStart;
+	if (size % 8 != 0)
+		size += 8 - size % 8;
+
 	while (blockFound == 0)
 	{	
 		if (listEntry->size >= size)
@@ -399,7 +404,6 @@ void *allocate_next_fit(int size)
 	if (blockFound)
 	{
 		allocate_block(nextBlock, size, excessSize, 1);
-		totalAllocatedSize += size;
 		nextBlock = (void *)((char *)nextBlock + BLOCK_HEADER);
 	}
 	else
@@ -544,43 +548,27 @@ void add_block_freeList(void *block)
 	else
 	{	
 		free_block_head_t *currentBlock = block;
-		int blockBefore = *(int *)((char *)block - BLOCK_HEADER);
-		int blockAfter = *(int *)((char *)block + 2 * BLOCK_HEADER + currentBlock->size);
+		int *blockBefore = (int *)((char *)block - BLOCK_HEADER);
+		int *blockAfter = (int *)((char *)block + 2 * BLOCK_HEADER + currentBlock->size);
 		// Should fix these to reflect what they are actually looking at.
 		// Looking for being at the start of the heap (heapAbsHead), or sbrk(0)
-		if (blockBefore != 0 && blockAfter != 0)
+		if (blockBefore != heapStart && blockAfter != heapEnd && *blockBefore % 2 == 0 && *blockAfter % 2 == 0)
 		{
-			if (blockBefore % 2 == 0 && blockAfter % 2 == 0)
-			{
-				block = frontCoalescence(block, blockBefore);
-				block = rearCoalescence(block, blockAfter);
-			}
-			else if (blockBefore % 2 == 0)
-			{
-				block = frontCoalescence(block, blockBefore);
-			} 
-			else if (blockAfter % 2 == 0)
-			{	
-				block = rearCoalescence(block, blockAfter);
-			}
-			else
-			{
-				addToSortedList(block);
-				//addToTail(block);
-			}
+			block = frontCoalescence(block, *blockBefore);
+			remove_block_freeList(block);
+			block = rearCoalescence(block, *blockAfter);
 		}
-		else if(blockBefore % 2 == 0 && blockBefore != 0)
+		else if(*blockBefore % 2 == 0 && blockBefore != heapStart)
 		{
-			block = frontCoalescence(block, blockBefore);
+			block = frontCoalescence(block, *blockBefore);
 		}
-		else if (blockAfter != 0 && blockAfter % 2 == 0)
+		else if (blockAfter != heapEnd && *blockAfter % 2 == 0)
 		{
-			block = rearCoalescence(block, blockAfter);
+			block = rearCoalescence(block, *blockAfter);
 		}
 		else
 		{	
 			addToSortedList(block);
-			//addToTail(block);
 		}
 
 	}
@@ -690,7 +678,7 @@ void freeListInfo()
 	void *ptr = freeListHead;
 	int i = 0;
 	puts("=================");
-	while (ptr != NULL)
+	while (ptr != NULL && i < 50)
 	{
 		char str[50];
 		sprintf(str, "currentaddr: %p", ptr);
