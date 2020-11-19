@@ -160,11 +160,10 @@ void sma_mallinfo()
 	//	Finds the largest Contiguous Free Space (should be the largest free block)
 	int largestFreeBlock = get_largest_freeBlock();
 	char str[60];
-
 	//	Prints the SMA Stats
-	sprintf(str, "Total number of bytes allocated: %lu", totalAllocatedSize);
+	sprintf(str, "Total number of bytes allocated: %ld", totalAllocatedSize);
 	puts(str);
-	sprintf(str, "Total free space: %lu", totalFreeSize);
+	sprintf(str, "Total free space: %ld", totalFreeSize);
 	puts(str);
 	sprintf(str, "Size of largest contigious free space (in bytes): %d", largestFreeBlock);
 	puts(str);
@@ -221,7 +220,6 @@ void *sma_realloc(void *ptr, int size)
 		else
 		{
 			// SMA malloc for now with sma_free
-			puts("Using SMA_MALLOC AND FREE");
 			pMemory = sma_malloc(size);
 			memcpy(pMemory, ptr, ptrSize);
 			sma_free(ptr);
@@ -281,6 +279,7 @@ void *allocate_pBrk(int size)
 		int *tailTag = (int *)((char *)newBlock + ((free_block_head_t *)newBlock)->size + BLOCK_HEADER);
 		*tailTag = newBlockSize;
 		remove_block_freeList(newBlock);
+		totalFreeSize += totalSize;
 	}
 	else
 	{
@@ -355,6 +354,7 @@ void *allocate_worst_fit(int size)
 		allocate_block(worstBlock, size, excessSize, 1);
 		// Move forward to the free space
 		worstBlock = (void *)((char *)worstBlock + BLOCK_HEADER);
+		totalAllocatedSize += size;
 	}
 	else
 	{
@@ -379,20 +379,15 @@ void *allocate_next_fit(int size)
 	
 	if (nextFitSet == 0)
 	{
-		puts("setting head to front");
 		nextFitStart = freeListHead;
 	}
 		
 	nextFitSet = 1;
 	free_block_head_t *listEntry = (free_block_head_t *)nextFitStart;
 	while (blockFound == 0)
-	{
-		sprintf(ps, "listEntry %p with size %d need size %d", listEntry, listEntry->size, size);
-		puts(ps);
-		
+	{	
 		if (listEntry->size >= size)
 		{
-			puts("FOUND!");
 			blockFound = 1;
 			nextBlock = (void *)listEntry;
 			excessSize = listEntry->size - size - 2*BLOCK_HEADER;
@@ -400,7 +395,6 @@ void *allocate_next_fit(int size)
 		} 
 		else 
 		{
-			puts("CONTNIUING SEARCH");
 			if (listEntry->next != NULL)
 				listEntry = listEntry->next;
 			else
@@ -414,6 +408,7 @@ void *allocate_next_fit(int size)
 	if (blockFound)
 	{
 		allocate_block(nextBlock, size, excessSize, 1);
+		totalAllocatedSize += size;
 		nextBlock = (void *)((char *)nextBlock + BLOCK_HEADER);
 	}
 	else
@@ -524,10 +519,8 @@ void replace_block_freeList(void *oldBlock, void *newBlock)
 	//	Updates SMA info
 	if (nextFitStart == oldBlock)
 		nextFitStart = newBlock;
-	void *intOldBlock = (void *)((int *)newBlock + 1);
-	totalAllocatedSize += get_blockSize(intOldBlock);
+	void *intOldBlock = (void *)((int *)oldBlock + 1);
 	totalFreeSize -= get_blockSize(intOldBlock);
-
 }
 
 /*
@@ -613,6 +606,7 @@ void add_block_freeList(void *block)
 		int *tailTag = (int *)((char *)block + pBlock->size + BLOCK_HEADER);
 		*tailTag = pBlock->size;
 		sbrk(-MAX_TOP_FREE);
+		totalFreeSize -= MAX_TOP_FREE;
 	}
 }
 
@@ -632,7 +626,6 @@ void remove_block_freeList(void *block)
 		else
 		{
 			nextFitStart = freeListHead;
-			puts("setting head to front");
 		}
 	}
 
@@ -659,7 +652,6 @@ void remove_block_freeList(void *block)
 		pBlock->prev = NULL;
 	}
 	//	Updates SMA info
-
 	void *intBlock = (void *)((int *)block + 1);
 	totalFreeSize -= get_blockSize(intBlock);
 }
@@ -676,8 +668,6 @@ int get_blockSize(void *ptr)
 	//	Points to the address where the Length of the block is stored
 	pSize = (int *)ptr;
 	pSize--;
-	// sprintf(ps, "ptr %p", pSize);
-	// puts(ps);
 	//	Returns the deferenced size
 	return *(int *)pSize ;
 }
@@ -842,7 +832,7 @@ void *expandBlock(void *block, void *blockBehind, int size, int excessSize)
 	int *blockSize = (int *)block;
 	int replace = excessSize > minFreeSize;
 	sprintf(ps, "Pointer calling expand=%p, %d space expanding into %p", block, *blockSize, blockBehind);
-	puts(ps);
+	// puts(ps);
 	if (replace != 0)
 	{
 		// we are replacing

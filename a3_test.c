@@ -55,8 +55,6 @@ int main(int argc, char *argv[])
 
 	// Allocate some storage .. this should go into the freed storage
 	ct = (char *)sma_malloc(5 * 1024);
-	// sprintf(str, "CT : %p", ct);
-	// puts(str);
 
 	// Testing if you are allocating excess memory at the end
 	if (ct > c[31])
@@ -118,18 +116,14 @@ int main(int argc, char *argv[])
 	// One chunk of 2x16 kbytes
 	sma_free(c2[5]);
 	sma_free(c2[4]);
-
 	int *cp2 = (int *)sma_malloc(16 * 1024 * 2);
-	// puts("Test 6: Print SMA Statistics...");
-	// puts("===============================");
-	// sma_mallinfo();
 	// Testing if the correct hole has been allocated
 	if (cp2 != NULL)
 	{
 		if (cp2 == c2[27] || cp2 == c2[28] || cp2 == c2[29] || cp2 == c2[30])
 			puts("\t\t\t\t PASSED\n");
 		else
-			puts("\t\t\t\t FAILED NOT NULL\n");
+			puts("\t\t\t\t FAILED\n");
 	}
 	else
 	{
@@ -144,16 +138,11 @@ int main(int argc, char *argv[])
 	sma_mallopt(NEXT_FIT);
 	int *cp3 = (int *)sma_malloc(16 * 1024 * 3);
 	int *cp4 = (int *)sma_malloc(16 * 1024 * 2);
-
 	// Testing if the correct holes have been allocated
 	if (cp3 == c2[8] && cp3 != NULL)
 	{
 		if (cp4 == c2[19])
 		{
-			// sprintf(str, "C[19]: %p", c[19]);
-			// puts(str);
-			// sprintf(str, "CP4: %p", cp4);
-			// puts(str);
 			puts("\t\t\t\t PASSED\n");
 		}
 		else
@@ -165,7 +154,6 @@ int main(int argc, char *argv[])
 	{
 		puts("\t\t\t\t FAILED\n");
 	}
-	freeListInfo();
 	// Test 5: Realloc test (with Next Fit)
 	puts("Test 5: Check for Reallocation with Next Fit...");
 	// Writes some value pointed by the pointer
