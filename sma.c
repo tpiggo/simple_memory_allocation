@@ -31,11 +31,9 @@ typedef struct __free_block_head{
 	struct __free_block_head *prev;
 } free_block_head_t;
 
-//	TODO: Change the Header size if required
 #define FREE_BLOCK_HEADER_SIZE 2 * sizeof(char *) + sizeof(int) // Size of the Header in a free memory block
 #define BLOCK_HEADER sizeof(int)
 #define POINTERS 2* sizeof(char *)
-//	TODO: Add constants here
 
 typedef enum //	Policy type definition
 {
@@ -50,7 +48,7 @@ void *freeListTail = NULL;			  //	The pointer to the TAIL of the doubly linked f
 unsigned long totalAllocatedSize = 0; //	Total Allocated memory in Bytes
 unsigned long totalFreeSize = 0;	  //	Total Free memory in Bytes in the free memory list
 Policy currentPolicy = WORST;		  //	Current Policy
-//	TODO: Add any global variables here
+
 int minFreeSize = sizeof(free_block_head_t) + BLOCK_HEADER;
 void *heapStart;
 void *heapEnd;
@@ -178,13 +176,6 @@ void sma_mallinfo()
  */
 void *sma_realloc(void *ptr, int size)
 {
-	// TODO: 	Should be similar to sma_malloc, except you need to check if the pointer address
-	//			had been previously allocated.
-	// Hint:	Check if you need to expand or contract the memory. If new size is smaller, then
-	//			chop off the current allocated memory and add to the free list. If new size is bigger
-	//			then check if there is sufficient adjacent free space to expand, otherwise find a new block
-	//			like sma_malloc.
-	//			Should not accept a NULL pointer, and the size should be greater than 0.
 	void *pMemory = NULL;
 
 	if (ptr  == NULL || size < 0)
@@ -461,7 +452,7 @@ void allocate_block(void *newBlock, int size, int excessSize, int fromFreeList)
 	//	Otherwise add the excess memory to the new block
 	else
 	{
-		//	TODO: Add excessSize to size and assign it to the new Block
+		// Add excessSize to size and assign it to the new Block
 		int *tailTag = (int *)((char *)newBlock + size + BLOCK_HEADER);
 		*tailTag = size + 1;
 		if (excessSize > 0)
@@ -488,9 +479,6 @@ void allocate_block(void *newBlock, int size, int excessSize, int fromFreeList)
  */
 void replace_block_freeList(void *oldBlock, void *newBlock)
 {
-	/** 
-	 * TODO: Refractor Code! Need proper casting
-	 */
 	free_block_head_t *pNewBlock = (free_block_head_t *)newBlock;
 	free_block_head_t *pOldBlock = (free_block_head_t *)oldBlock;
 
@@ -828,6 +816,10 @@ void addToSortedList(void *block)
 
 void *expandBlock(void *block, void *blockBehind, int size, int excessSize)
 {
+	/** 
+	 * TODO:	Refractor Code! Need proper casting
+	 * 			Need to test this function
+	 */
 	free_block_head_t *rBlock = (free_block_head_t *)blockBehind;
 	int *blockSize = (int *)block;
 	int replace = excessSize > minFreeSize;
@@ -848,6 +840,10 @@ void *expandBlock(void *block, void *blockBehind, int size, int excessSize)
 
 void chopAndAdd(void *block, int newSize, int oldSize)
 {
+	/** 
+	 * TODO:	Refractor Code! Need proper casting
+	 * 			Need to test this function
+	 */
 	// chop and add to the list
 	free_block_head_t *newBlock;
 	int *tailTag = (int *)((char *)block + oldSize + BLOCK_HEADER); // for the old block
