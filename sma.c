@@ -57,7 +57,7 @@ void *nextFitStart;
 int nextFitSet = 0;
 void *heapStart = NULL;
 void *heapEnd = NULL;
-int maxpBrk = 0;
+int maxpBrk = 64;
 
 /*
  * =====================================================================================
@@ -569,40 +569,33 @@ void add_block_freeList(void *block)
 		{
 			if (*blockBefore % 2 == 0 && *blockAfter % 2 == 0 && *blockAfter != 0 && *blockBefore != 0)
 			{
-				puts("Double");
 				block = front_coalescence(block, *blockBefore);
 				remove_block_freeList(block);
 				block = rear_coalescence(block, *blockAfter);
 			}
 			else if (*blockBefore % 2 == 0 && *blockBefore != 0)
 			{
-				puts("Front");
 				block = front_coalescence(block, *blockBefore);
 			} 
 			else if (*blockAfter % 2 == 0 && *blockAfter != 0)
-			{	
-				puts("Rear");
+			{
 				block = rear_coalescence(block, *blockAfter);
 			}
 			else
 			{
-				puts("No coalescence and not at an end");
 				add_sorted_list(block);
 			}
 		}
 		else if(*blockBefore % 2 == 0 && (void *)blockBefore > heapStart)
 		{
-			puts("front");
 			block = front_coalescence(block, *blockBefore);
 		}
 		else if ((void *)blockAfter < heapEnd && *blockAfter % 2 == 0)
 		{
-			puts("rearcoal");
 			block = rear_coalescence(block, *blockAfter);
 		}
 		else
 		{	
-			puts("No coalescence and at an end");
 			add_sorted_list(block);
 		}
 
