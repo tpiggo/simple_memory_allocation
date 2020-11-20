@@ -24,7 +24,7 @@
 #include <unistd.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include "sma2.h"
+#include "sma.h"
 
 int main(int argc, char *argv[])
 {
@@ -180,6 +180,5 @@ int main(int argc, char *argv[])
 	puts("Test 6: Print SMA Statistics...");
 	puts("===============================");
 	sma_mallinfo();
-
 	return (0);
 }

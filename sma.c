@@ -1,3 +1,4 @@
+
 /*
  * =====================================================================================
  *
@@ -31,9 +32,11 @@ typedef struct __free_block_head{
 	struct __free_block_head *prev;
 } free_block_head_t;
 
+//	TODO: Change the Header size if required
 #define FREE_BLOCK_HEADER_SIZE 2 * sizeof(char *) + sizeof(int) // Size of the Header in a free memory block
 #define BLOCK_HEADER sizeof(int)
 #define POINTERS 2* sizeof(char *)
+//	TODO: Add constants here
 
 typedef enum //	Policy type definition
 {
@@ -41,19 +44,21 @@ typedef enum //	Policy type definition
 	NEXT
 } Policy;
 
-char ps[100];
+char ps[50];
 char *sma_malloc_error;
 void *freeListHead = NULL;			  //	The pointer to the HEAD of the doubly linked free memory list
 void *freeListTail = NULL;			  //	The pointer to the TAIL of the doubly linked free memory list
 unsigned long totalAllocatedSize = 0; //	Total Allocated memory in Bytes
 unsigned long totalFreeSize = 0;	  //	Total Free memory in Bytes in the free memory list
 Policy currentPolicy = WORST;		  //	Current Policy
-
+//	TODO: Add any global variables here
 int minFreeSize = sizeof(free_block_head_t) + BLOCK_HEADER;
-void *heapStart;
-void *heapEnd;
-void *nextFitStart = NULL;
+void *nextFitStart;
 int nextFitSet = 0;
+void *heapStart = NULL;
+void *heapEnd = NULL;
+int maxpBrk = 64;
+
 /*
  * =====================================================================================
  *	Public Functions for SMA
@@ -81,12 +86,14 @@ void *sma_malloc(int size)
 	else
 	{
 		// Allocate memory from the free memory list
+
 		pMemory = allocate_freeList(size);
 
 		// If a valid memory could NOT be allocated from the free memory list
 		if (pMemory == (void *)-2)
 		{
 			// Allocate memory by increasing the Program Break
+			// freelist size = 128 - freelist
 			pMemory = allocate_pBrk(size);
 		}
 	}
@@ -94,7 +101,7 @@ void *sma_malloc(int size)
 	// Validates memory allocation
 	if (pMemory < 0 || pMemory == NULL)
 	{
-		sprintf(sma_malloc_error, "Error: Memory allocation failed!");
+		sma_malloc_error = "Error: Memory allocation failed!";
 		return NULL;
 	}
 	// Updates SMA Info
@@ -158,6 +165,7 @@ void sma_mallinfo()
 	//	Finds the largest Contiguous Free Space (should be the largest free block)
 	int largestFreeBlock = get_largest_freeBlock();
 	char str[60];
+
 	//	Prints the SMA Stats
 	sprintf(str, "Total number of bytes allocated: %lu", totalAllocatedSize);
 	puts(str);
@@ -176,60 +184,48 @@ void sma_mallinfo()
  */
 void *sma_realloc(void *ptr, int size)
 {
-	void *pMemory = NULL;
-
+	// TODO: 	Should be similar to sma_malloc, except you need to check if the pointer address
+	//			had been previously allocated.
+	// Hint:	Check if you need to expand or contract the memory. If new size is smaller, then
+	//			chop off the current allocated memory and add to the free list. If new size is bigger
+	//			then check if there is sufficient adjacent free space to expand, otherwise find a new block
+	//			like sma_malloc.
+	//			Should not accept a NULL pointer, and the size should be greater than 0.
 	if (ptr  == NULL || size < 0)
 	{
 		sprintf(sma_malloc_error, "Problem in realloc! Too small or ptr is NULL");
 		return NULL;
 	}
-
+	void *retBlock = NULL;
 	// Checks if the block of memory to the right is free
 	void *block = (void *)((int *)ptr - 1);
 	int ptrSize = ((free_block_head_t *)block)->size;
 	if (ptrSize % 2  != 0)
 		ptrSize--;
 
-	if (ptrSize == size )
+	if (size > ptrSize + minFreeSize)
 	{
-		pMemory = ptr;
-	}
-	else if (ptrSize > size + minFreeSize)
-	{
-		// Need to chop
-		chopAndAdd(block, size, ptrSize);
-		pMemory = (char *)block + BLOCK_HEADER;
-	}
-	else
-	{
-		// Need to Expand the block potentially or allocate another block. 
-		int *nextBlock = (int *)((char *)block + ptrSize + 2 * BLOCK_HEADER);
-		int total  = ptrSize + *nextBlock;
-		if (nextBlock != heapEnd && *nextBlock % 2 == 0 && total >= size)
+		void *nextBlock = (void *)((char *)ptr + ptrSize + BLOCK_HEADER);
+		if (nextBlock != heapEnd && *(int *)nextBlock % 2 == 0 &&  *(int *)nextBlock+ptrSize > size)
 		{
-			int excessSize = total-size;
-			pMemory = expandBlock(block, (void *)nextBlock, size, excessSize);
+			int excessSize = ptrSize + *(int *)nextBlock - size;
+			retBlock = expand_block(block, (void *)nextBlock, size, excessSize);
 		}
 		else
 		{
-			// SMA malloc for now with sma_free
-			pMemory = sma_malloc(size);
-			memcpy(pMemory, ptr, ptrSize);
+			retBlock = sma_malloc(size);
+			memcpy(retBlock, ptr, ((free_block_head_t *)ptr)->size);
 			sma_free(ptr);
 		}
 	}
-
-
-
-	// Validates memory allocation
-	if (pMemory < 0 || pMemory == NULL)
+	else
 	{
-		sma_malloc_error = "Error: Memory allocation failed!";
-		return NULL;
+		// Need to chop
+		chop_and_add(block, size, ptrSize);
+		retBlock = (char *)block + BLOCK_HEADER;
 	}
+	return retBlock;
 
-
-	return pMemory;
 }
 
 /*
@@ -246,45 +242,46 @@ void *sma_realloc(void *ptr, int size)
  */
 void *allocate_pBrk(int size)
 {
-	int maxKB = 128;
+	
+	if(size % 8 != 0)
+		size += (8 - size %8);
 	void *newBlock = NULL;
-	int headers = 2 * BLOCK_HEADER;
-	int newBlockSize = size + headers;
-	if (newBlockSize % 8 != 0)
-		newBlockSize += 8 - newBlockSize % 8;
-	int excessSize = maxKB * 1024 ;
-	int totalSize = newBlockSize + excessSize + headers ;
+	int excessSize;
+	int extraSize = 1024 * maxpBrk + 2 * BLOCK_HEADER;
+	if (size > extraSize)
+		excessSize = size;
+	else
+		excessSize = size + extraSize;
+	int totalSize = excessSize + 2 * BLOCK_HEADER;
 	if (heapStart == NULL)
 		heapStart = sbrk(0);
 	newBlock = sbrk(totalSize);
+	heapEnd = sbrk(0);
 	if (newBlock == NULL)
 	{
 		sprintf(sma_malloc_error, "Error allocating\n");
 		return NULL;
 	}
-	heapEnd = sbrk(0);
-	int *blockFront = (int *)newBlock -1;
+	int *blockFront = (int *)((char *)newBlock - BLOCK_HEADER);
+	// If not null cast it to a free_block_head type
 	((free_block_head_t *)newBlock)->next = NULL;
 	((free_block_head_t *)newBlock)->prev = NULL;
-	((free_block_head_t *)newBlock)->size = totalSize - headers;
-	if (*blockFront % 2 == 0 && *blockFront != 0)
+	((free_block_head_t *)newBlock)->size = excessSize;
+	// move the pointer to the end and set tail tag
+	int *tailTag = (int *)((char *)newBlock + excessSize - BLOCK_HEADER);
+	*tailTag = excessSize;
+	excessSize = excessSize - size;
+	if ((void *)blockFront > heapStart && *blockFront % 2 == 0)
 	{
-		newBlock = frontCoalescence(newBlock, *blockFront);
-		excessSize = ((free_block_head_t *)newBlock)->size - newBlockSize;
-		int *tailTag = (int *)((char *)newBlock + ((free_block_head_t *)newBlock)->size + BLOCK_HEADER);
-		*tailTag = newBlockSize;
+		newBlock = front_coalescence(newBlock, *blockFront);
 		remove_block_freeList(newBlock);
 		totalFreeSize += totalSize;
-	}
-	else
-	{
-		int *tailTag = (int *)((char *)newBlock + totalSize + BLOCK_HEADER);
-		*tailTag = newBlockSize;
+		totalSize = *(int *)newBlock;
+		excessSize = totalSize- size;
 	}
 	//	Allocates the Memory Block by sending the whole newBlock to get allocated accordingly.
 	allocate_block(newBlock, size, excessSize, 0);
-	// Move forward to the free space
-	return newBlock + BLOCK_HEADER;
+	return (char *)newBlock + BLOCK_HEADER;
 }
 
 /*
@@ -327,18 +324,19 @@ void *allocate_worst_fit(int size)
 	int excessSize;
 	int blockFound = 0;
 	int minSize = sizeof(free_block_head_t) + BLOCK_HEADER;
+	if(size % 8 != 0)
+		size += (8 - size %8);
 
 	void *ptr = freeListHead;
 	excessSize = 0;
-	if (size % 8 != 0)
-		size += 8 - size % 8;
+	
 	while (ptr != NULL)
 	{
 		int ptrSize = ((free_block_head_t *)ptr)->size;
-		if (ptrSize > minSize && ptrSize >= size && (ptrSize-size-2*BLOCK_HEADER) >= excessSize)
+		if (ptrSize > minSize && ptrSize >= size && ptrSize-size > excessSize)
 		{
 			worstBlock = ptr;
-			excessSize = ptrSize-size - 2*BLOCK_HEADER;
+			excessSize = ptrSize-size;
 			blockFound = 1;
 		}
 		ptr = ((free_block_head_t *)ptr)->next;
@@ -348,7 +346,6 @@ void *allocate_worst_fit(int size)
 	{
 		//	Allocates the Memory Block
 		allocate_block(worstBlock, size, excessSize, 1);
-		// Move forward to the free space
 		worstBlock = (void *)((char *)worstBlock + BLOCK_HEADER);
 	}
 	else
@@ -368,9 +365,12 @@ void *allocate_worst_fit(int size)
  */
 void *allocate_next_fit(int size)
 {
+	
 	void *nextBlock = NULL;
 	int excessSize;
 	int blockFound = 0;
+	if(size % 8 != 0)
+		size += (8 - size %8);
 	
 	if (nextFitSet == 0)
 	{
@@ -388,7 +388,7 @@ void *allocate_next_fit(int size)
 		{
 			blockFound = 1;
 			nextBlock = (void *)listEntry;
-			excessSize = listEntry->size - size - 2*BLOCK_HEADER;
+			excessSize = listEntry->size - size;
 			nextFitStart = listEntry;
 		} 
 		else 
@@ -415,6 +415,8 @@ void *allocate_next_fit(int size)
 	}
 
 	return nextBlock;
+
+	return nextBlock;
 }
 
 /*
@@ -426,20 +428,28 @@ void *allocate_next_fit(int size)
 void allocate_block(void *newBlock, int size, int excessSize, int fromFreeList)
 {
 	void *excessFreeBlock; //	pointer for any excess free block
-	int addFreeBlock  = excessSize > minFreeSize;
+	int addFreeBlock;
+
+	// 	Checks if excess free size is big enough to be added to the free memory list
+	//	Helps to reduce external fragmentation
+	addFreeBlock = excessSize > minFreeSize;
 	//	If excess free size is big enough
 	if (addFreeBlock)
 	{
+		//	TODO: Create a free block using the excess memory size, then assign it to the Excess Free Block
+		// Here we need to allocate, and potentially split, the free block
 		// Set the tail
-		int *tailTag = (int *)((char *)newBlock + size + BLOCK_HEADER);
+		excessSize -= 2 * BLOCK_HEADER;
+		int *tailTag = newBlock + size + BLOCK_HEADER;
 		*tailTag = size + 1;
 
-		excessFreeBlock = (void *)((char *)newBlock + size + 2 * BLOCK_HEADER);
+		excessFreeBlock = newBlock + size + 2 * BLOCK_HEADER;
 		((free_block_head_t *)excessFreeBlock)->size =  excessSize;
 		((free_block_head_t *)newBlock)->size = size;
 		// Set the split blocks tails
-		tailTag = (int *)((char *)excessFreeBlock + excessSize + BLOCK_HEADER);
+		tailTag = excessFreeBlock + excessSize + BLOCK_HEADER;
 		*tailTag = excessSize;
+
 		//	Checks if the new block was allocated from the free memory list
 		if (fromFreeList)
 		{
@@ -458,22 +468,20 @@ void allocate_block(void *newBlock, int size, int excessSize, int fromFreeList)
 	//	Otherwise add the excess memory to the new block
 	else
 	{
-		// Add excessSize to size and assign it to the new Block
-		int *tailTag = (int *)((char *)newBlock + size + BLOCK_HEADER);
-		*tailTag = size + 1;
+		//	TODO: Add excessSize to size and assign it to the new Block
 		if (excessSize > 0)
-			((free_block_head_t *)newBlock)->size = size + excessSize;	
-		else
-			((free_block_head_t *)newBlock)->size = size;
-		((free_block_head_t *)newBlock)->size += 8;
+			size += excessSize;
+		int *tailTag = newBlock + size + BLOCK_HEADER;
+		*tailTag = size + 1;
+		((free_block_head_t *)newBlock)->size = size;
 		//	Checks if the new block was allocated from the free memory list
 		if (fromFreeList)
 		{
 			//	Removes the new block from the free list
 			remove_block_freeList(newBlock);
 		}
-		((free_block_head_t *)newBlock)->size++;
 
+		((free_block_head_t *)newBlock)->size ++;
 	}
 }
 
@@ -485,36 +493,38 @@ void allocate_block(void *newBlock, int size, int excessSize, int fromFreeList)
  */
 void replace_block_freeList(void *oldBlock, void *newBlock)
 {
-	free_block_head_t *pNewBlock = (free_block_head_t *)newBlock;
-	free_block_head_t *pOldBlock = (free_block_head_t *)oldBlock;
-
-	pNewBlock->prev = pOldBlock->prev;
-	pNewBlock->next = pOldBlock->next;
+	//	TODO: Replace the old block with the new block
+	free_block_head_t *nBlock = (free_block_head_t *)newBlock;
+	free_block_head_t *oBlock = (free_block_head_t *)oldBlock;
+	nBlock->prev = oBlock->prev;
+	nBlock->next = oBlock->next;
 	
-	if (pOldBlock->prev != NULL)
-		pOldBlock->prev->next = pNewBlock;
-	if (pOldBlock->next != NULL)
-		pOldBlock->next->prev = pNewBlock;
+	if (oBlock->prev != NULL)
+		oBlock->prev->next = newBlock;
+	if (oBlock->next != NULL)
+		oBlock->next->prev = newBlock;
 	// Clear these in order to give this memory space back to the user
-	pOldBlock->prev = NULL;
-	pOldBlock->next = NULL;
+	oBlock->prev = NULL;
+	oBlock->next = NULL;
 
 	if (oldBlock == freeListHead)
 	{
 		// Swap head of the list if it is the head of the list
-		freeListHead = pNewBlock;
+		freeListHead = newBlock;
 	}
 
 	if (oldBlock == freeListTail)
 	{
 		// Swap tail of the list if it is the tail of the list
-		freeListTail = pNewBlock;
+		freeListTail = newBlock;
+	}
+
+	if (nextFitStart == oldBlock)
+	{
+		nextFitStart = newBlock;
 	}
 	//	Updates SMA info
-	if (nextFitStart == oldBlock)
-		nextFitStart = newBlock;
-	void *intOldBlock = (void *)((int *)oldBlock + 1);
-	totalFreeSize -= get_blockSize(intOldBlock);
+	totalFreeSize -= oBlock->size;
 }
 
 /*
@@ -525,20 +535,29 @@ void replace_block_freeList(void *oldBlock, void *newBlock)
  */
 void add_block_freeList(void *block)
 {
-	block = block - BLOCK_HEADER; 
-	free_block_head_t *pBlock = (free_block_head_t *)block;
+	//	TODO: 	Add the block to the free list
+	//	Hint: 	You could add the free block at the end of the list, but need to check if there
+	//			exists a list. You need to add the TAG to the list.
+	//			Also, you would need to check if merging with the "adjacent" blocks is possible or not.
+	//			Merging would be tideous. Check adjacent blocks, then also check if the merged
+	//			block is at the top and is bigger than the largest free block allowed (128kB).
 	int flag = 0;
 	// Coming from free, the block was in use, therefore, we need to reset the length and reset flag
-	void *intBlock = (void *)((int *)block + 1);
-	if ((pBlock->size % 2) != 0)
+	block = (void *)((char *)block - BLOCK_HEADER);
+	if ((*(int *)block % 2) != 0)
 	{
-		pBlock->size = pBlock->size - 1;
-		int *ptr = (int *)((char *)block + BLOCK_HEADER + pBlock->size);
-		*ptr = *ptr - 1;
-		totalAllocatedSize -= get_blockSize(intBlock);
+		*(int *)block = *(int *)block - 1;
+		void *ptr = block + BLOCK_HEADER + *(int *)block;
+		*(int *)ptr = *(int *)ptr - 1;
+		flag = 1;
 	}
+	int blockSize = *(int *)block;
 	//	Updates SMA info
-	totalFreeSize += get_blockSize(intBlock);
+	if (flag == 1)
+	{
+		totalAllocatedSize -= blockSize;
+	}
+	totalFreeSize += blockSize;
 	// Edge cases: No list
 	if (freeListHead == NULL)
 	{
@@ -549,41 +568,49 @@ void add_block_freeList(void *block)
 	// If it is, merge.
 	else
 	{	
+		void *currentBlock = block;
 		int *blockBefore = (int *)((char *)block - BLOCK_HEADER);
-		int *blockAfter = (int *)((char *)block + 2 * BLOCK_HEADER + pBlock->size);
-		// Should fix these to reflect what they are actually looking at.
-		// Looking for being at the start of the heap (heapAbsHead), or sbrk(0)
-		if (blockBefore != heapStart && blockAfter != heapEnd && *blockBefore % 2 == 0 && *blockAfter % 2 == 0)
+		int *blockAfter = (int *)((char *)block + 2 * BLOCK_HEADER + *(int *)block);
+		if ((void *)blockBefore > heapStart && (void *)blockAfter < heapEnd)
 		{
-			block = frontCoalescence(block, *blockBefore);
-			remove_block_freeList(block);
-			block = rearCoalescence(block, *blockAfter);
+			if (*blockBefore % 2 == 0 && *blockAfter % 2 == 0)
+			{
+				block = front_coalescence(block, *blockBefore);
+				remove_block_freeList(block);
+				block = rear_coalescence(block, *blockAfter);
+			}
+			else if (*blockBefore % 2 == 0)
+			{
+				block = front_coalescence(block, *blockBefore);
+			} 
+			else if (*blockAfter % 2 == 0)
+			{	
+				block = rear_coalescence(block, *blockAfter);
+			}
+			else
+			{
+				add_sorted_list(block);
+			}
 		}
-		else if(*blockBefore % 2 == 0 && blockBefore != heapStart)
+		else if(*blockBefore % 2 == 0 && (void *)blockBefore > heapStart)
 		{
-			block = frontCoalescence(block, *blockBefore);
+			block = front_coalescence(block, *blockBefore);
 		}
-		else if (blockAfter != heapEnd && *blockAfter % 2 == 0)
+		else if ((void *)blockAfter < heapEnd && *blockAfter % 2 == 0)
 		{
-			block = rearCoalescence(block, *blockAfter);
+			block = rear_coalescence(block, *blockAfter);
 		}
 		else
 		{	
-			addToSortedList(block);
+			add_sorted_list(block);
 		}
 
 	}
-	// Check if the new block is near the top and too large. Trim if so.
-	pBlock = (free_block_head_t *)block;
-	void *rearBlock = (void *)((char *)block + pBlock->size + 2 * BLOCK_HEADER); 
-	if (rearBlock == heapEnd && pBlock->size > MAX_TOP_FREE)
+	
+	void *nextBlock = (void *)((char *)block + *(int *)block + 2 * BLOCK_HEADER);
+	if (nextBlock == heapEnd && *(int *)block > MAX_TOP_FREE)
 	{
-		int extraFree = pBlock->size - MAX_TOP_FREE;
-		pBlock->size = extraFree;
-		int *tailTag = (int *)((char *)block + pBlock->size + BLOCK_HEADER);
-		*tailTag = pBlock->size;
-		sbrk(-MAX_TOP_FREE);
-		totalFreeSize -= MAX_TOP_FREE;
+		limit_max_top(block);
 	}
 }
 
@@ -631,8 +658,7 @@ void remove_block_freeList(void *block)
 		pBlock->prev = NULL;
 	}
 	//	Updates SMA info
-	void *intBlock = (void *)((int *)block + 1);
-	totalFreeSize -= get_blockSize(intBlock);
+	totalFreeSize -= *(int *)block;
 }
 
 /*
@@ -644,11 +670,12 @@ void remove_block_freeList(void *block)
 int get_blockSize(void *ptr)
 {
 	int *pSize;
+
 	//	Points to the address where the Length of the block is stored
 	pSize = (int *)ptr;
-	pSize--;
+
 	//	Returns the deferenced size
-	return *(int *)pSize ;
+	return *(int *)pSize;
 }
 
 /*
@@ -661,75 +688,41 @@ int get_largest_freeBlock()
 {
 	int largestBlockSize = 0;
 
-	free_block_head_t *ptr = (free_block_head_t *)freeListHead;
-	free_block_head_t *largest;
+	//	TODO: Iterate through the Free Block List to find the largest free block and return its size
+	void *ptr = freeListHead;
 	while (ptr != NULL)
 	{
-		int ptrSize = ptr->size;
+		int ptrSize = ((free_block_head_t *)ptr)->size;
 		if (largestBlockSize < ptrSize)
 		{
 			largestBlockSize = ptrSize;
-			largest = ptr;
 		}
-		ptr = ptr->next;
+		ptr = ((free_block_head_t *)ptr)->next;;
 	}
+
 	return largestBlockSize;
 }
 
-void freeListInfo()
+void *front_coalescence(void *block, int lengthBefore)
 {
-	void *ptr = freeListHead;
-	int i = 0;
-	puts("=================");
-	while (ptr != NULL && i < 50)
-	{
-		char str[50];
-		sprintf(str, "currentaddr: %p", ptr);
-		puts(str);
-		int ptr_size = ((free_block_head_t *)ptr)->size;
-		sprintf(str, "Size of free: %d", ptr_size);
-		puts(str);
-		void *ptr_n = ((free_block_head_t *)ptr)->next;
-		sprintf(str, "next add: %p", ptr_n);
-		puts(str);
-		void *ptr_p = ((free_block_head_t *)ptr)->prev;
-		sprintf(str, "prev addr: %p", ptr_p);
-		puts(str);
-		ptr = ptr_n;
-		if (ptr != NULL)
-			puts("-----------------");
-		i++;
-	}
-	puts("=================");
-	char str[50];
-	sprintf(str, "nextFit addr: %p", nextFitStart);
-	puts(str);
-	puts("=================");
-	
-}
-
-void *frontCoalescence(void *block, int lengthBefore)
-{
-	free_block_head_t *pBlock = (free_block_head_t *)block;
 	free_block_head_t *blockInfront = (free_block_head_t *)((char *)block - 2 * BLOCK_HEADER - lengthBefore);
-	blockInfront->size += 2 * BLOCK_HEADER + pBlock->size;
-	int *blockTail = (int *)((char *)block + BLOCK_HEADER + pBlock->size);
+	blockInfront->size += 2 * BLOCK_HEADER + ((free_block_head_t *)block)->size;
+	int *blockTail = (int *)((char *)block + BLOCK_HEADER + *(int *)block);
 	*blockTail =  blockInfront->size;
-	pBlock->size = 0;
-	pBlock->next = NULL;
-	pBlock->prev = NULL;
 	return blockInfront;
 }
 
-void *rearCoalescence(void *block, int lengthBehind)
+void *rear_coalescence(void *block, int lengthBehind)
 {
+	//int blockSize = *(int *)block;
+	free_block_head_t *blockBehind = (free_block_head_t *)((char *)block + 2 * BLOCK_HEADER + *(int *)block);
 	free_block_head_t *pBlock = (free_block_head_t *)block;
-	free_block_head_t *blockBehind = (free_block_head_t *)((char *)block + 2 * BLOCK_HEADER + pBlock->size);
 	pBlock->size += 2 * BLOCK_HEADER + blockBehind->size;
 	int *blockTail = (int *)((char *)block + BLOCK_HEADER + pBlock->size);
 	*blockTail =  pBlock->size;
 	if (blockBehind->next != NULL && blockBehind->prev != NULL)
 	{
+		
 		pBlock->prev = blockBehind->prev;
 		pBlock->next = blockBehind->next;
 		blockBehind->prev->next = block;
@@ -738,7 +731,7 @@ void *rearCoalescence(void *block, int lengthBehind)
 	else if (blockBehind->next != NULL)
 	{
 		pBlock->next = blockBehind->next;
-		blockBehind->next->prev = pBlock;
+		blockBehind->next->prev = block;
 	}
 	else if (blockBehind->prev != NULL)
 	{
@@ -759,19 +752,16 @@ void *rearCoalescence(void *block, int lengthBehind)
 	{
 		freeListTail= block;
 	}
-	if (nextFitStart == blockBehind)
-	{
-		nextFitStart = block;
-	}
 
 	// Set the values to NULL
 	blockBehind->next = NULL;
 	blockBehind->prev = NULL;
 	blockBehind->size = 0;
+
 	return block;
 }
 
-void addToTail(void *block)
+void add_to_tail(void *block)
 {
 	free_block_head_t *pBlock = (free_block_head_t *)block;
 	pBlock->next = NULL; 
@@ -780,7 +770,7 @@ void addToTail(void *block)
 	freeListTail = block;
 }
 
-void addToSortedList(void *block)
+void add_sorted_list(void *block)
 {
 	free_block_head_t *pBlock = (free_block_head_t *)block;
 	free_block_head_t *listEntry = (free_block_head_t *)freeListHead;
@@ -810,35 +800,44 @@ void addToSortedList(void *block)
 	}
 	if (added == 0)
 	{
-		addToTail(block);
+		add_to_tail(block);
 	}
 }
 
-void *expandBlock(void *block, void *blockBehind, int size, int excessSize)
+void limit_max_top(void *block)
 {
-	/** 
-	 * TODO:	Refractor Code! Need proper casting
-	 * 			Need to test this function
-	 */
+	free_block_head_t *pBlock = (free_block_head_t *)block;
+	int extraFree = pBlock->size - MAX_TOP_FREE;
+	pBlock->size -= extraFree;
+	int *tailTag = (int *)((char *)block + pBlock->size + BLOCK_HEADER);
+	*tailTag = pBlock->size;
+	sbrk(-extraFree);
+	totalFreeSize -= extraFree;
+	// Update the top of the heap
+	heapEnd = sbrk(0);
+}
+
+void *expand_block(void *block, void *blockBehind, int size, int excessSize)
+{
 	free_block_head_t *rBlock = (free_block_head_t *)blockBehind;
 	int *blockSize = (int *)block;
 	int replace = excessSize > minFreeSize;
 	remove_block_freeList(blockBehind);
 	if (replace != 0)
 	{
-		int total = size + excessSize + 2 * BLOCK_HEADER;
+		int total = size + excessSize;
 		int *tailTag = (int *)((char *)blockBehind + rBlock->size + BLOCK_HEADER);
-		*tailTag = total + 1;
+		*tailTag = total;
 		rBlock->size = 0;
 		rBlock->prev = NULL;
 		rBlock->next = NULL;
-		*blockSize = total+1;
-		chopAndAdd(block, size, total);
+		*blockSize = total;
+		chop_and_add(block, size, total);
 
 	}
 	else
 	{
-		size += excessSize + 2 * BLOCK_HEADER;
+		size += excessSize;
 		int *tailTag = (int *)((char *)blockBehind + rBlock->size + BLOCK_HEADER);
 		*tailTag = size+1;
 		// Empty the tail tag in front.
@@ -854,12 +853,8 @@ void *expandBlock(void *block, void *blockBehind, int size, int excessSize)
 }
 
 
-void chopAndAdd(void *block, int newSize, int oldSize)
+void chop_and_add(void *block, int newSize, int oldSize)
 {
-	/** 
-	 * TODO:	Refractor Code! Need proper casting
-	 * 			Need to test this function
-	 */
 	// chop and add to the list
 	int *tailTag = (int *)((char *)block + oldSize + BLOCK_HEADER); // for the old block
 	int *blockHeader = (int *)block;
@@ -867,8 +862,38 @@ void chopAndAdd(void *block, int newSize, int oldSize)
 	*tailTag = oldSize - newSize - 2 * BLOCK_HEADER; // newBlocks length
 
 	free_block_head_t *newBlock = (free_block_head_t *)((char *)block + newSize + 2 * BLOCK_HEADER);
+	newBlock->next = NULL;
+	newBlock->prev = NULL;
 	newBlock->size = oldSize - newSize - 2 * BLOCK_HEADER;
 	tailTag = (int *)((char *)block + newSize + BLOCK_HEADER); 
 	*tailTag = newSize + 1;
 	add_block_freeList((char *)newBlock + BLOCK_HEADER);
+}
+
+void free_list_info()
+{
+	void *ptr = freeListHead;
+	int i = 0;
+	puts("=================");
+	while (ptr != NULL)
+	{
+		char str[50];
+		sprintf(str, "currentaddr: %p", ptr);
+		puts(str);
+		int ptr_size = ((free_block_head_t *)ptr)->size;
+		sprintf(str, "Size of free: %d", ptr_size);
+		puts(str);
+		void *ptr_n = ((free_block_head_t *)ptr)->next;
+		sprintf(str, "next add: %p", ptr_n);
+		puts(str);
+		void *ptr_p = ((free_block_head_t *)ptr)->prev;
+		sprintf(str, "prev addr: %p", ptr_p);
+		puts(str);
+		ptr = ptr_n;
+		if (ptr != NULL)
+			puts("-----------------");
+		i++;
+	}
+	puts("=================");
+	
 }
