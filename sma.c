@@ -57,7 +57,7 @@ void *nextFitStart;
 int nextFitSet = 0;
 void *heapStart = NULL;
 void *heapEnd = NULL;
-int maxpBrk = 64;
+int maxpBrk = 0;
 
 /*
  * =====================================================================================
@@ -535,12 +535,6 @@ void replace_block_freeList(void *oldBlock, void *newBlock)
  */
 void add_block_freeList(void *block)
 {
-	//	TODO: 	Add the block to the free list
-	//	Hint: 	You could add the free block at the end of the list, but need to check if there
-	//			exists a list. You need to add the TAG to the list.
-	//			Also, you would need to check if merging with the "adjacent" blocks is possible or not.
-	//			Merging would be tideous. Check adjacent blocks, then also check if the merged
-	//			block is at the top and is bigger than the largest free block allowed (128kB).
 	int flag = 0;
 	// Coming from free, the block was in use, therefore, we need to reset the length and reset flag
 	block = (void *)((char *)block - BLOCK_HEADER);
@@ -573,35 +567,42 @@ void add_block_freeList(void *block)
 		int *blockAfter = (int *)((char *)block + 2 * BLOCK_HEADER + *(int *)block);
 		if ((void *)blockBefore > heapStart && (void *)blockAfter < heapEnd)
 		{
-			if (*blockBefore % 2 == 0 && *blockAfter % 2 == 0)
+			if (*blockBefore % 2 == 0 && *blockAfter % 2 == 0 && *blockAfter != 0 && *blockBefore != 0)
 			{
+				puts("Double");
 				block = front_coalescence(block, *blockBefore);
 				remove_block_freeList(block);
 				block = rear_coalescence(block, *blockAfter);
 			}
-			else if (*blockBefore % 2 == 0)
+			else if (*blockBefore % 2 == 0 && *blockBefore != 0)
 			{
+				puts("Front");
 				block = front_coalescence(block, *blockBefore);
 			} 
-			else if (*blockAfter % 2 == 0)
+			else if (*blockAfter % 2 == 0 && *blockAfter != 0)
 			{	
+				puts("Rear");
 				block = rear_coalescence(block, *blockAfter);
 			}
 			else
 			{
+				puts("No coalescence and not at an end");
 				add_sorted_list(block);
 			}
 		}
 		else if(*blockBefore % 2 == 0 && (void *)blockBefore > heapStart)
 		{
+			puts("front");
 			block = front_coalescence(block, *blockBefore);
 		}
 		else if ((void *)blockAfter < heapEnd && *blockAfter % 2 == 0)
 		{
+			puts("rearcoal");
 			block = rear_coalescence(block, *blockAfter);
 		}
 		else
 		{	
+			puts("No coalescence and at an end");
 			add_sorted_list(block);
 		}
 
@@ -826,13 +827,15 @@ void *expand_block(void *block, void *blockBehind, int size, int excessSize)
 	if (replace != 0)
 	{
 		puts("Here");
-		int total = size + excessSize;
+		int total = size + excessSize + 2 * BLOCK_HEADER;
 		int *tailTag = (int *)((char *)blockBehind + rBlock->size + BLOCK_HEADER);
 		*tailTag = total;
 		rBlock->size = 0;
 		rBlock->prev = NULL;
 		rBlock->next = NULL;
 		*blockSize = total;
+		sprintf(ps,"total=%d; size=%d", total, size);
+		puts(ps);
 		chop_and_add(block, size, total);
 	}
 	else
