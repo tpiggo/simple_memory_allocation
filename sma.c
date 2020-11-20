@@ -159,9 +159,9 @@ void sma_mallinfo()
 	int largestFreeBlock = get_largest_freeBlock();
 	char str[60];
 	//	Prints the SMA Stats
-	sprintf(str, "Total number of bytes allocated: %ld", totalAllocatedSize);
+	sprintf(str, "Total number of bytes allocated: %lu", totalAllocatedSize);
 	puts(str);
-	sprintf(str, "Total free space: %ld", totalFreeSize);
+	sprintf(str, "Total free space: %lu", totalFreeSize);
 	puts(str);
 	sprintf(str, "Size of largest contigious free space (in bytes): %d", largestFreeBlock);
 	puts(str);
@@ -190,12 +190,15 @@ void *sma_realloc(void *ptr, int size)
 	if (ptrSize % 2  != 0)
 		ptrSize--;
 
-	if (ptrSize > size + minFreeSize)
+	if (ptrSize == size )
+	{
+		pMemory = ptr;
+	}
+	else if (ptrSize > size + minFreeSize)
 	{
 		// Need to chop
-		puts("chop");
 		chopAndAdd(block, size, ptrSize);
-		pMemory = (char *)pMemory + BLOCK_HEADER;
+		pMemory = (char *)block + BLOCK_HEADER;
 	}
 	else
 	{
@@ -204,7 +207,6 @@ void *sma_realloc(void *ptr, int size)
 		int total  = ptrSize + *nextBlock;
 		if (nextBlock != heapEnd && *nextBlock % 2 == 0 && total >= size)
 		{
-			// See if we can merge and create a new larger block. If not allocate more!
 			int excessSize = total-size;
 			pMemory = expandBlock(block, (void *)nextBlock, size, excessSize);
 		}
@@ -547,9 +549,8 @@ void add_block_freeList(void *block)
 	// If it is, merge.
 	else
 	{	
-		free_block_head_t *currentBlock = block;
 		int *blockBefore = (int *)((char *)block - BLOCK_HEADER);
-		int *blockAfter = (int *)((char *)block + 2 * BLOCK_HEADER + currentBlock->size);
+		int *blockAfter = (int *)((char *)block + 2 * BLOCK_HEADER + pBlock->size);
 		// Should fix these to reflect what they are actually looking at.
 		// Looking for being at the start of the heap (heapAbsHead), or sbrk(0)
 		if (blockBefore != heapStart && blockAfter != heapEnd && *blockBefore % 2 == 0 && *blockAfter % 2 == 0)
@@ -598,7 +599,9 @@ void remove_block_freeList(void *block)
 	if (nextFitStart == block)
 	{
 		if (pBlock->next != NULL)
+		{
 			nextFitStart = pBlock->next;
+		}
 		else
 		{
 			nextFitStart = freeListHead;
@@ -698,6 +701,10 @@ void freeListInfo()
 		i++;
 	}
 	puts("=================");
+	char str[50];
+	sprintf(str, "nextFit addr: %p", nextFitStart);
+	puts(str);
+	puts("=================");
 	
 }
 
@@ -752,6 +759,10 @@ void *rearCoalescence(void *block, int lengthBehind)
 	{
 		freeListTail= block;
 	}
+	if (nextFitStart == blockBehind)
+	{
+		nextFitStart = block;
+	}
 
 	// Set the values to NULL
 	blockBehind->next = NULL;
@@ -784,6 +795,7 @@ void addToSortedList(void *block)
 				pBlock->next = listEntry;
 				listEntry->prev = pBlock;
 				freeListHead = block;
+				pBlock->prev = NULL;
 			}
 			else 
 			{
@@ -811,18 +823,34 @@ void *expandBlock(void *block, void *blockBehind, int size, int excessSize)
 	free_block_head_t *rBlock = (free_block_head_t *)blockBehind;
 	int *blockSize = (int *)block;
 	int replace = excessSize > minFreeSize;
-	sprintf(ps, "Pointer calling expand=%p, %d space expanding into %p", block, *blockSize, blockBehind);
-	// puts(ps);
+	remove_block_freeList(blockBehind);
 	if (replace != 0)
 	{
-		// we are replacing
+		int total = size + excessSize + 2 * BLOCK_HEADER;
+		int *tailTag = (int *)((char *)blockBehind + rBlock->size + BLOCK_HEADER);
+		*tailTag = total + 1;
+		rBlock->size = 0;
+		rBlock->prev = NULL;
+		rBlock->next = NULL;
+		*blockSize = total+1;
+		chopAndAdd(block, size, total);
+
 	}
 	else
 	{
-		// Not replacing, take the whole block
+		size += excessSize + 2 * BLOCK_HEADER;
+		int *tailTag = (int *)((char *)blockBehind + rBlock->size + BLOCK_HEADER);
+		*tailTag = size+1;
+		// Empty the tail tag in front.
+		tailTag = (int *)((char *)blockBehind - BLOCK_HEADER);
+		*tailTag = 0;
+		// Empty the struct;
+		rBlock->size = 0;
+		rBlock->next = NULL;
+		rBlock->prev = NULL;
+		*blockSize = size+1;
 	}
-
-	return NULL;
+	return (char *)block + BLOCK_HEADER;
 }
 
 
@@ -833,14 +861,14 @@ void chopAndAdd(void *block, int newSize, int oldSize)
 	 * 			Need to test this function
 	 */
 	// chop and add to the list
-	free_block_head_t *newBlock;
 	int *tailTag = (int *)((char *)block + oldSize + BLOCK_HEADER); // for the old block
 	int *blockHeader = (int *)block;
 	*blockHeader = newSize + 1;
 	*tailTag = oldSize - newSize - 2 * BLOCK_HEADER; // newBlocks length
-	newBlock = (free_block_head_t *)((char *)block + newSize + BLOCK_HEADER);
+
+	free_block_head_t *newBlock = (free_block_head_t *)((char *)block + newSize + 2 * BLOCK_HEADER);
 	newBlock->size = oldSize - newSize - 2 * BLOCK_HEADER;
 	tailTag = (int *)((char *)block + newSize + BLOCK_HEADER); 
 	*tailTag = newSize + 1;
-	add_block_freeList((void *)newBlock);
+	add_block_freeList((char *)newBlock + BLOCK_HEADER);
 }
