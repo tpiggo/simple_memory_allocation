@@ -825,6 +825,7 @@ void *expand_block(void *block, void *blockBehind, int size, int excessSize)
 	remove_block_freeList(blockBehind);
 	if (replace != 0)
 	{
+		puts("Here");
 		int total = size + excessSize;
 		int *tailTag = (int *)((char *)blockBehind + rBlock->size + BLOCK_HEADER);
 		*tailTag = total;
@@ -833,7 +834,6 @@ void *expand_block(void *block, void *blockBehind, int size, int excessSize)
 		rBlock->next = NULL;
 		*blockSize = total;
 		chop_and_add(block, size, total);
-
 	}
 	else
 	{

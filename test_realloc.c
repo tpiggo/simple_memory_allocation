@@ -2,7 +2,7 @@
 #include <unistd.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include "sma2.h"
+#include "sma.h"
 
 int main(int argc, char *argv[])
 {
@@ -31,9 +31,8 @@ int main(int argc, char *argv[])
 	}
     free_list_info();
     char *cp3 = (char *)sma_malloc(1024*2);
-    free_list_info();
     cp3 = (char *)sma_realloc(cp3, 1024*1);
-    if (cp3 == c[10])
+    if (cp3 > c[31])
         puts("\t\t\t\t PASSED\n");
     else
     {
@@ -42,16 +41,11 @@ int main(int argc, char *argv[])
     free_list_info();
     puts("Test 2: expand test...");
     char *cp4 = (char *)sma_malloc(1024*2);
-    sprintf(str, "Before cp4: %p", cp4);
-	puts(str);
     free_list_info();
+    puts("REALLOCING");
     cp4 = (char *)sma_realloc(cp4, 1024*4);
-    sprintf(str, "After realloc cp4: %p", cp4);
-	puts(str);
-    sprintf(str, "Before c[11]: %p", c[11]);
-	puts(str);
     free_list_info();
-    if (cp4 == c[11])
+    if (cp4 > c[31])
     {
         puts("\t\t\t\t PASSED\n");
     }
@@ -59,6 +53,8 @@ int main(int argc, char *argv[])
     {
         puts("\t\t\t\t FAILED\n");
     }
+    free_list_info();
+    sma_free(cp4);
     free_list_info();
     return 0;
 }
