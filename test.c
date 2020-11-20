@@ -24,7 +24,7 @@
 #include <unistd.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include "sma.h"
+#include "sma2.h"
 
 int main(int argc, char *argv[])
 {
@@ -51,14 +51,13 @@ int main(int argc, char *argv[])
 		sma_free(c[i]);
 		// sprintf(str, "Freeing c[i]: %p", c[i]);
 		// puts(str);
-
-		freeListInfo();
 	}
+
 	// Allocate some storage .. this should go into the freed storage
 	ct = (char *)sma_malloc(5 * 1024);
 
 	// Testing if you are allocating excess memory at the end
-	if (ct > c[31])
+	if (ct < c[31])
 		puts("\t\t\t\t PASSED\n");
 	else
 		puts("\t\t\t\t FAILED\n");
@@ -82,7 +81,7 @@ int main(int argc, char *argv[])
 		puts("\t\t\t\t PASSED\n");
 	else
 		puts("\t\t\t\t FAILED\n");
-	freeListInfo();
+
 	// Test 3: Worst Fit Test
 	puts("Test 3: Check for Worst Fit algorithm...");
 	// Sets Policy to Worst Fit
@@ -130,7 +129,6 @@ int main(int argc, char *argv[])
 	{
 		puts("\t\t\t\t FAILED\n");
 	}
-
 	//	Freeing cp2
 	sma_free(cp2);
 	// Test 4: Next Fit Test
@@ -165,7 +163,10 @@ int main(int argc, char *argv[])
 	// Calling realloc
 	cp3 = (int *)sma_realloc(cp3, 16 * 1024 * 5);
 	cp4 = (int *)sma_realloc(cp4, 16 * 1024 * 3);
-
+    sprintf(str, "cp3=%p; cp4=%p", cp3, cp4);
+    puts(str);
+    sprintf(str, "c2[27]=%p; c2[8]=%p", c2[27], c2[8]);
+    puts(str);
 	if (cp3 == c2[27] && cp3 != NULL && cp4 == c2[8] && cp4 != NULL)
 	{
 		//	Test the Data stored in the memory blocks
@@ -180,6 +181,7 @@ int main(int argc, char *argv[])
 	{
 		puts("\t\t\t\t FAILED\n");
 	}
+    freeListInfo();
 	//	Test 6: Print Stats
 	puts("Test 6: Print SMA Statistics...");
 	puts("===============================");

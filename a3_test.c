@@ -35,7 +35,7 @@ int main(int argc, char *argv[])
 	char str[60];
 
 	// Test 1: Find the holes
-	puts("Test 1: Excess Memory Allocation...");
+	puts("Test 1: ExcesAs Memory Allocation...");
 
 	// Allocating 32 kbytes of memory..
 	for (i = 0; i < 32; i++)
