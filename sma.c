@@ -267,7 +267,7 @@ void *allocate_pBrk(int size)
 	((free_block_head_t *)newBlock)->next = NULL;
 	((free_block_head_t *)newBlock)->prev = NULL;
 	((free_block_head_t *)newBlock)->size = totalSize - headers;
-	if (*blockFront %2 == 0 && *blockFront != 0)
+	if (*blockFront % 2 == 0 && *blockFront != 0)
 	{
 		newBlock = frontCoalescence(newBlock, *blockFront);
 		excessSize = ((free_block_head_t *)newBlock)->size - newBlockSize;

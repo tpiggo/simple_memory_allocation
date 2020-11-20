@@ -31,7 +31,7 @@ int main(int argc, char *argv[])
 		// sprintf(str, "Freeing c[i]: %p", c[i]);
 		// puts(str);
 	}
-    freeListInfo();
+    free_list_info();
 	// Allocate some storage .. this should go into the freed storage
 	ct = (char *)sma_malloc(3 * 1024);
     if (ct == c[10])

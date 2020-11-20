@@ -21,7 +21,7 @@
  */
 
 /* Includes */
-#include "sma2.h" // Please add any libraries you plan to use inside this file
+#include "smae.h" // Please add any libraries you plan to use inside this file
 
 /* Definitions*/
 #define MAX_TOP_FREE (128 * 1024) // Max top free block size = 128 Kbytes
@@ -57,6 +57,7 @@ void *nextFitStart;
 int nextFitSet = 0;
 void *heapStart = NULL;
 void *heapEnd = NULL;
+int maxpBrk = 64;
 
 /*
  * =====================================================================================
@@ -209,13 +210,11 @@ void *sma_realloc(void *ptr, int size)
 		puts(ps);
 		if (nextBlock != heapEnd && *(int *)nextBlock % 2 == 0 &&  *(int *)nextBlock+ptrSize > size)
 		{
-			puts("Expand");
 			int excessSize = ptrSize + *(int *)nextBlock - size;
 			retBlock = expand_block(block, (void *)nextBlock, size, excessSize);
 		}
 		else
 		{
-			puts("Here?");
 			retBlock = sma_malloc(size);
 			memcpy(retBlock, ptr, ((free_block_head_t *)ptr)->size);
 			sma_free(ptr);
@@ -247,18 +246,11 @@ void *allocate_pBrk(int size)
 {
 	void *newBlock = NULL;
 	int excessSize;
-
-	/***
-	 * TODO: 	Allocate memory by incrementing the Program Break by calling sbrk() or brk()
-	 * Hint:	Getting an exact "size" of memory might not be the best idea. Why?
-	 * 			Also, if you are getting a larger memory, you need to put the excess in the free list
-	 * 
-	 * The following increases the memory size by 64 kb. It is safe to do this, since the only reason we
-	 * know that we only come into here if freeMemHead is empty (no free space) or not enough free space
-	 * therefore, 64 - alloc + free space < 64kb.
-	 * 
-	*/
-	excessSize = size;
+	int extraSize = 1024 * maxpBrk + 2 * BLOCK_HEADER;
+	if (size > extraSize)
+		excessSize = size;
+	else
+		excessSize = size + extraSize;
 	int totalSize = excessSize + 2 * BLOCK_HEADER;
 	if (heapStart == NULL)
 		heapStart = sbrk(0);
@@ -269,17 +261,25 @@ void *allocate_pBrk(int size)
 		sprintf(sma_malloc_error, "Error allocating\n");
 		return NULL;
 	}
+	int *blockFront = (int *)((char *)newBlock - BLOCK_HEADER);
 	// If not null cast it to a free_block_head type
 	((free_block_head_t *)newBlock)->next = NULL;
 	((free_block_head_t *)newBlock)->prev = NULL;
 	((free_block_head_t *)newBlock)->size = excessSize;
 	// move the pointer to the end and set tail tag
-	int *tailTag = newBlock + excessSize - BLOCK_HEADER;
+	int *tailTag = (int *)((char *)newBlock + excessSize - BLOCK_HEADER);
 	*tailTag = excessSize;
 	excessSize = excessSize - size;
+	if ((void *)blockFront > heapStart && *blockFront % 2 == 0)
+	{
+		newBlock = front_coalescence(newBlock, *blockFront);
+		remove_block_freeList(newBlock);
+		totalSize = *(int *)newBlock;
+		excessSize = totalSize- size;
+		totalFreeSize += totalSize;
+	}
 	//	Allocates the Memory Block by sending the whole newBlock to get allocated accordingly.
 	allocate_block(newBlock, size, excessSize, 0);
-	//return newBlock + BLOCK_HEADER;
 	return (char *)newBlock + BLOCK_HEADER;
 }
 
@@ -323,8 +323,6 @@ void *allocate_worst_fit(int size)
 	int excessSize;
 	int blockFound = 0;
 	int minSize = sizeof(free_block_head_t) + BLOCK_HEADER;
-	//	TODO: 	Allocate memory by using Worst Fit Policy
-	//	Hint:	Start off with the freeListHead and iterate through the entire list to get the largest bloc
 
 	void *ptr = freeListHead;
 	excessSize = 0;
@@ -344,9 +342,6 @@ void *allocate_worst_fit(int size)
 	if (blockFound)
 	{
 		//	Allocates the Memory Block
-		//sprintf(ps, "Worst = %p, sizeof = %d", worstBlock, ((free_block_head_t*)worstBlock)->size );
-		//puts(ps);
-		//excessSize = *(int *)worstBlock - size - 2 * BLOCK_HEADER;
 		allocate_block(worstBlock, size, excessSize, 1);
 		worstBlock = (void *)((char *)worstBlock + BLOCK_HEADER);
 	}
@@ -431,17 +426,7 @@ void allocate_block(void *newBlock, int size, int excessSize, int fromFreeList)
 
 	// 	Checks if excess free size is big enough to be added to the free memory list
 	//	Helps to reduce external fragmentation
-
-	/***
-	 * 	TODO: 	Adjust the condition based on your Head and Tail size (depends on your TAG system)
-	 * 	Hint: 	Might want to have a minimum size greater than the Head/Tail sizes
-	 *  
-	 * Bottom header does not contain the pointers, thus min size of a free block must be larger than
-	 * free header block and tail block.
-	**/
 	addFreeBlock = excessSize > minFreeSize;
-	// sprintf(ps, "excessSize=%d; size=%d, newBlockSize=%d", excessSize, size, *(int *)newBlock);
-	// puts(ps);
 	//	If excess free size is big enough
 	if (addFreeBlock)
 	{
@@ -463,7 +448,6 @@ void allocate_block(void *newBlock, int size, int excessSize, int fromFreeList)
 		if (fromFreeList)
 		{
 			//	Removes new block and adds the excess free block to the free list
-			puts("replace!");
 			replace_block_freeList(newBlock, excessFreeBlock);
 		}
 		else
@@ -618,7 +602,10 @@ void add_block_freeList(void *block)
 	totalFreeSize += blockSize;
 	void *nextBlock = (void *)((char *)block + *(int *)block + 2 * BLOCK_HEADER);
 	if (nextBlock == heapEnd && *(int *)block > MAX_TOP_FREE)
+	{
 		limit_max_top(block);
+		puts("LIMITING TOP");
+	}
 }
 
 /*
@@ -819,26 +806,23 @@ void limit_max_top(void *block)
 {
 	free_block_head_t *pBlock = (free_block_head_t *)block;
 	int extraFree = pBlock->size - MAX_TOP_FREE;
-	pBlock->size = extraFree;
+	pBlock->size -= extraFree;
 	int *tailTag = (int *)((char *)block + pBlock->size + BLOCK_HEADER);
 	*tailTag = pBlock->size;
 	sbrk(-extraFree);
 	totalFreeSize -= extraFree;
+	// Update the top of the heap
+	heapEnd = sbrk(0);
 }
 
 void *expand_block(void *block, void *blockBehind, int size, int excessSize)
 {
-	/** 
-	 * TODO:	Refractor Code! Need proper casting
-	 * 			Need to test this function
-	 */
 	free_block_head_t *rBlock = (free_block_head_t *)blockBehind;
 	int *blockSize = (int *)block;
 	int replace = excessSize > minFreeSize;
 	remove_block_freeList(blockBehind);
 	if (replace != 0)
 	{
-		puts("In here!!");
 		int total = size + excessSize;
 		int *tailTag = (int *)((char *)blockBehind + rBlock->size + BLOCK_HEADER);
 		*tailTag = total;
@@ -869,10 +853,6 @@ void *expand_block(void *block, void *blockBehind, int size, int excessSize)
 
 void chop_and_add(void *block, int newSize, int oldSize)
 {
-	/** 
-	 * TODO:	Refractor Code! Need proper casting
-	 * 			Need to test this function
-	 */
 	// chop and add to the list
 	int *tailTag = (int *)((char *)block + oldSize + BLOCK_HEADER); // for the old block
 	int *blockHeader = (int *)block;
