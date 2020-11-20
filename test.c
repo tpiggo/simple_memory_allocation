@@ -163,10 +163,6 @@ int main(int argc, char *argv[])
 	// Calling realloc
 	cp3 = (int *)sma_realloc(cp3, 16 * 1024 * 5);
 	cp4 = (int *)sma_realloc(cp4, 16 * 1024 * 3);
-    sprintf(str, "cp3=%p; cp4=%p", cp3, cp4);
-    puts(str);
-    sprintf(str, "c2[27]=%p; c2[8]=%p", c2[27], c2[8]);
-    puts(str);
 	if (cp3 == c2[27] && cp3 != NULL && cp4 == c2[8] && cp4 != NULL)
 	{
 		//	Test the Data stored in the memory blocks
@@ -181,7 +177,6 @@ int main(int argc, char *argv[])
 	{
 		puts("\t\t\t\t FAILED\n");
 	}
-    freeListInfo();
 	//	Test 6: Print Stats
 	puts("Test 6: Print SMA Statistics...");
 	puts("===============================");
