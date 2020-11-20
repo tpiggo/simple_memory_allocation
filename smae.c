@@ -167,9 +167,9 @@ void sma_mallinfo()
 	char str[60];
 
 	//	Prints the SMA Stats
-	sprintf(str, "Total number of bytes allocated: %ld", totalAllocatedSize);
+	sprintf(str, "Total number of bytes allocated: %lu", totalAllocatedSize);
 	puts(str);
-	sprintf(str, "Total free space: %ld", totalFreeSize);
+	sprintf(str, "Total free space: %lu", totalFreeSize);
 	puts(str);
 	sprintf(str, "Size of largest contigious free space (in bytes): %d", largestFreeBlock);
 	puts(str);
@@ -206,8 +206,6 @@ void *sma_realloc(void *ptr, int size)
 	if (size > ptrSize + minFreeSize)
 	{
 		void *nextBlock = (void *)((char *)ptr + ptrSize + BLOCK_HEADER);
-		sprintf(ps, "SizeofNextBlock:%p=%d", nextBlock, *(int *)nextBlock);
-		puts(ps);
 		if (nextBlock != heapEnd && *(int *)nextBlock % 2 == 0 &&  *(int *)nextBlock+ptrSize > size)
 		{
 			int excessSize = ptrSize + *(int *)nextBlock - size;
@@ -244,6 +242,9 @@ void *sma_realloc(void *ptr, int size)
  */
 void *allocate_pBrk(int size)
 {
+	
+	if(size % 8 != 0)
+		size += (8 - size %8);
 	void *newBlock = NULL;
 	int excessSize;
 	int extraSize = 1024 * maxpBrk + 2 * BLOCK_HEADER;
@@ -555,37 +556,36 @@ void add_block_freeList(void *block)
 	else
 	{	
 		void *currentBlock = block;
-		int blockBefore = *(int *)((char *)block - BLOCK_HEADER);
-		int blockAfter = *(int *)((char *)block + 2 * BLOCK_HEADER + *(int *)block);
-		if (blockBefore != 0 && blockAfter != 0)
+		int *blockBefore = (int *)((char *)block - BLOCK_HEADER);
+		int *blockAfter = (int *)((char *)block + 2 * BLOCK_HEADER + *(int *)block);
+		if ((void *)blockBefore > heapStart && (void *)blockAfter < heapEnd)
 		{
-			if (blockBefore % 2 == 0 && blockAfter % 2 == 0)
+			if (*blockBefore % 2 == 0 && *blockAfter % 2 == 0)
 			{
-				block = front_coalescence(block, blockBefore);
+				block = front_coalescence(block, *blockBefore);
 				remove_block_freeList(block);
-				block = rear_coalescence(block, blockAfter);
+				block = rear_coalescence(block, *blockAfter);
 			}
-			else if (blockBefore % 2 == 0)
+			else if (*blockBefore % 2 == 0)
 			{
-				block = front_coalescence(block, blockBefore);
+				block = front_coalescence(block, *blockBefore);
 			} 
-			else if (blockAfter % 2 == 0)
+			else if (*blockAfter % 2 == 0)
 			{	
-				block = rear_coalescence(block, blockAfter);
+				block = rear_coalescence(block, *blockAfter);
 			}
 			else
 			{
 				add_sorted_list(block);
 			}
 		}
-		else if(blockBefore % 2 == 0 && blockBefore != 0)
+		else if(*blockBefore % 2 == 0 && (void *)blockBefore > heapStart)
 		{
-			block = front_coalescence(block, blockBefore);
+			block = front_coalescence(block, *blockBefore);
 		}
-		else if (blockAfter != 0 && blockAfter % 2 == 0)
+		else if ((void *)blockAfter < heapEnd && *blockAfter % 2 == 0)
 		{
-			puts("rear2");
-			block = rear_coalescence(block, blockAfter);
+			block = rear_coalescence(block, *blockAfter);
 		}
 		else
 		{	
@@ -604,7 +604,6 @@ void add_block_freeList(void *block)
 	if (nextBlock == heapEnd && *(int *)block > MAX_TOP_FREE)
 	{
 		limit_max_top(block);
-		puts("LIMITING TOP");
 	}
 }
 

@@ -83,7 +83,6 @@ int main(int argc, char *argv[])
 		puts("\t\t\t\t FAILED\n");
 
 	// Test 3: Worst Fit Test
-    free_list_info();
 	puts("Test 3: Check for Worst Fit algorithm...");
 	// Sets Policy to Worst Fit
 	sma_mallopt(WORST_FIT);
