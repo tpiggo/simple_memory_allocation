@@ -46,13 +46,14 @@ static void allocate_block(void* newBlock, int size, int excessSize, int fromFre
 static void replace_block_freeList(void* oldBlock, void* newBlock);
 static void add_block_freeList(void* block);
 static void remove_block_freeList(void* block);
-int get_blockSize(void *ptr);
+static int get_blockSize(void *ptr);
 static int get_largest_freeBlock();
 //  TODO: Declare any private functions that you intend to add in your code.
-void freeListInfo();
-static void *frontCoalescence(void *block, int lengthBefore);
-static void *rearCoalescence(void *block, int lengthBehind);
-static void addToTail(void *block);
-static void addToSortedList(void *block);
-static void *expandBlock(void *block, void *blockBehind, int size, int excessSize);
-static void chopAndAdd(void *block, int newSize, int oldSize);
+static void *front_coalescence(void *block, int lengthBefore);
+static void *rear_coalescence(void *block, int lengthBehind);
+static void add_to_tail(void *block);
+static void add_sorted_list(void *block);
+static void *expand_block(void *block, void *blockBehind, int size, int excessSize);
+static void chop_and_add(void *block, int newSize, int oldSize);
+static void limit_max_top(void *block);
+void free_list_info();
